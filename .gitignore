@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.wav
+*.mp3
+*.m4a
+!demo/**/*.wav
+voice/models/
+.pytest_cache/
+*.egg-info/
+.DS_Store
