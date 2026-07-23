@@ -1,5 +1,7 @@
-"""Tests for POST /converse: response shape, session continuity/isolation,
-and latency logging — mocking STT/LLM/TTS throughout (see conftest.py).
+"""Tests for POST /converse: response shape, session_id handling, and
+latency logging. What the agent actually *does* with a turn (tool calls,
+clarification, etc.) is agent_loop.py's job — tested in test_agent_loop.py.
+Here agent_loop.run_turn is mocked as a black box (see conftest.py).
 """
 
 from __future__ import annotations
@@ -42,29 +44,15 @@ def test_new_session_id_minted_when_absent(client: TestClient, mock_pipeline: Fa
     assert first["session_id"] != second["session_id"]
 
 
-def test_session_history_threaded_into_llm(client: TestClient, mock_pipeline: FakePipeline) -> None:
-    first = _post(client)
-    session_id = first["session_id"]
-    _post(client, session_id=session_id)
+def test_run_turn_called_with_session_id_and_transcript(client: TestClient, mock_pipeline: FakePipeline) -> None:
+    body = _post(client, session_id="my-session")
+    _post(client, session_id="my-session")
 
-    assert len(mock_pipeline.reply_calls) == 2
-    first_history, _ = mock_pipeline.reply_calls[0]
-    second_history, _ = mock_pipeline.reply_calls[1]
-
-    assert first_history == []
-    assert second_history == [
-        {"role": "user", "content": "hello world"},
-        {"role": "assistant", "content": "reply to: hello world"},
+    assert mock_pipeline.run_turn_calls == [
+        ("my-session", "hello world"),
+        ("my-session", "hello world"),
     ]
-
-
-def test_separate_sessions_dont_share_history(client: TestClient, mock_pipeline: FakePipeline) -> None:
-    _post(client, session_id="session-a")
-    _post(client, session_id="session-b")
-
-    assert len(mock_pipeline.reply_calls) == 2
-    for history, _ in mock_pipeline.reply_calls:
-        assert history == []
+    assert body["session_id"] == "my-session"
 
 
 def test_latency_logged_without_leaking_audio(
@@ -76,7 +64,7 @@ def test_latency_logged_without_leaking_audio(
     [record] = [r for r in caplog.records if r.name == "voicecart.agent"]
     message = record.getMessage()
 
-    for field in ("stt_ms=", "llm_ms=", "tts_ms=", "total_ms=", "hello world"):
+    for field in ("stt_ms=", "agent_ms=", "tts_ms=", "total_ms=", "hello world"):
         assert field in message
     assert FAKE_AUDIO.decode() not in message
     assert "FAKE-WAV-BYTES" not in message

@@ -1,8 +1,9 @@
-"""FastAPI agent loop: the /converse endpoint wires STT -> LLM -> TTS.
+"""FastAPI agent loop: the /converse endpoint wires STT -> agent -> TTS.
 
-Week 1: single-turn STT/LLM/TTS plus per-session conversation history
-(Milestone 1.2), no commerce tools yet. The LLM just chats in the
-shopping-assistant persona, but now remembers earlier turns in the session.
+Week 2, Milestone 2.2: the agent is now tool-calling (agent/agent_loop.py),
+backed by the mcp_commerce MCP server (Milestone 2.1) instead of the Week 1
+echo persona. Session history (Milestone 1.2) now holds full tool-calling
+message dicts, not just plain text turns.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import base64
 import logging
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,13 +21,24 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from agent import llm, session
+from agent import agent_loop, session
+from agent.mcp_client import MCPClient
 from voice import stt, tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("voicecart.agent")
 
-app = FastAPI(title="VoiceCart Agent")
+mcp_client = MCPClient()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await mcp_client.connect()
+    yield
+    await mcp_client.close()
+
+
+app = FastAPI(title="VoiceCart Agent", lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -54,19 +67,15 @@ async def converse(audio: UploadFile, session_id: str | None = Form(None)) -> Co
     transcript, language = stt.transcribe(audio_bytes)
     t1 = time.perf_counter()
 
-    history = session.get_history(session_id)
-    reply_text = llm.reply(history, transcript)
+    reply_text = await agent_loop.run_turn(session_id, transcript, mcp_client)
     t2 = time.perf_counter()
-
-    session.append(session_id, "user", transcript)
-    session.append(session_id, "assistant", reply_text)
 
     reply_audio = tts.synthesize(reply_text)
     t3 = time.perf_counter()
 
     # Log transcripts and tool calls, never raw audio or API keys (CLAUDE.md).
     logger.info(
-        "session=%s stt_ms=%.0f llm_ms=%.0f tts_ms=%.0f total_ms=%.0f transcript=%r reply_text=%r",
+        "session=%s stt_ms=%.0f agent_ms=%.0f tts_ms=%.0f total_ms=%.0f transcript=%r reply_text=%r",
         session_id,
         (t1 - t0) * 1000,
         (t2 - t1) * 1000,

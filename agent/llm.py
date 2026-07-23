@@ -4,7 +4,11 @@ All provider config comes from env vars (LLM_API_KEY, LLM_MODEL, LLM_BASE_URL)
 per CLAUDE.md — never hardcode a provider. We talk to the OpenAI-compatible
 chat/completions REST endpoint directly with `requests` instead of pulling in
 a provider SDK, since Groq (our current provider) and most alternatives all
-speak this same shape.
+speak this same shape, including tool/function calling.
+
+This module is intentionally domain-agnostic — no system prompt, no
+shopping-specific logic. That lives in agent/agent_loop.py, which is the
+thing that actually decides what the agent does with the LLM's response.
 """
 
 from __future__ import annotations
@@ -13,34 +17,27 @@ import os
 
 import requests
 
-SYSTEM_PROMPT = (
-    "You are VoiceCart, a friendly voice-based grocery shopping assistant. "
-    "Keep replies short and conversational, since they will be spoken aloud. "
-    "You cannot place orders yet — just chat helpfully about what the user wants."
-)
 
+def chat_completion(messages: list[dict], tools: list[dict] | None = None) -> dict:
+    """Send `messages` (and optional tool schemas) to the LLM.
 
-def reply(history: list[dict[str, str]], user_text: str) -> str:
-    """Send `user_text` to the LLM, given prior turns in `history`, and return its reply.
-
-    `history` holds this session's past {"role", "content"} turns (oldest
-    first), not including the current `user_text` or the system prompt.
+    Returns the raw assistant message dict from the API — has a "content"
+    string for a plain reply, or a "tool_calls" list if the model wants to
+    call one or more tools instead.
     """
     api_key = os.environ["LLM_API_KEY"]
     model = os.environ["LLM_MODEL"]
     base_url = os.environ["LLM_BASE_URL"]
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *history,
-        {"role": "user", "content": user_text},
-    ]
+    payload = {"model": model, "messages": messages}
+    if tools:
+        payload["tools"] = tools
 
     response = requests.post(
         f"{base_url}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}"},
-        json={"model": model, "messages": messages},
+        json=payload,
         timeout=30,
     )
     response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    return response.json()["choices"][0]["message"]
