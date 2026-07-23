@@ -20,22 +20,26 @@ SYSTEM_PROMPT = (
 )
 
 
-def reply(user_text: str) -> str:
-    """Send `user_text` to the configured LLM with the shopping-assistant persona and return its reply."""
+def reply(history: list[dict[str, str]], user_text: str) -> str:
+    """Send `user_text` to the LLM, given prior turns in `history`, and return its reply.
+
+    `history` holds this session's past {"role", "content"} turns (oldest
+    first), not including the current `user_text` or the system prompt.
+    """
     api_key = os.environ["LLM_API_KEY"]
     model = os.environ["LLM_MODEL"]
     base_url = os.environ["LLM_BASE_URL"]
 
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *history,
+        {"role": "user", "content": user_text},
+    ]
+
     response = requests.post(
         f"{base_url}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}"},
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_text},
-            ],
-        },
+        json={"model": model, "messages": messages},
         timeout=30,
     )
     response.raise_for_status()

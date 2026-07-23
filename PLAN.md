@@ -28,8 +28,10 @@ Done 2026-07-23. `agent/main.py` (FastAPI, single POST /converse + static index 
 
 Perf fix during owner testing: initial round-trip was ~10.3s, almost entirely `voice/tts.py` shelling out to `python -m piper` per request (process spawn + ONNX model reload every call). Switched to Piper's Python API (`PiperVoice.load` once at import, `synthesize_wav` in-process) — brought total to ~7s. Remaining time is faster-whisper `small` on CPU (~5s for a ~5s clip); tried `beam_size=1` and higher `cpu_threads`, neither helped meaningfully, and swapping to a smaller Whisper model wasn't done since CLAUDE.md locks `small`/CPU as a deliberate decision (accuracy matters for Hinglish later) — that's a tradeoff to revisit together if latency becomes a real blocker, not Week 3's planned streaming-STT fix. Also swapped the record button from press-and-hold to click-to-start/click-to-stop per owner feedback (holding was awkward).
 
-**Milestone 1.2 — Session state.**
+**Milestone 1.2 — Session state.** [x]
 Add session_id handling and conversation history so multi-turn works ("what did I just ask?"). In-memory store.
+
+Done 2026-07-23. `agent/session.py`: plain dict keyed by `session_id`, storing each turn's {"role", "content"}. `/converse` now accepts an optional `session_id` form field (mints one via `uuid4().hex` if absent, always returns it) and threads the session's history into `agent/llm.py`'s `reply()` before the current turn. Demo page tracks `session_id` in a JS variable and appends every turn to a running transcript instead of overwriting. Verified via curl: told the agent "my name is Varshini and I want to buy some milk," then in the same session asked "what did I just say I wanted to buy?" — got back "milk, Varshini" correctly; repeating the second question with no session_id (fresh session) correctly came back with no memory of it.
 
 **Milestone 1.3 — Tests + latency logging.**
 pytest coverage for the endpoint (mock STT/LLM/TTS). Log per-stage latency (STT ms, LLM ms, TTS ms) — you'll cite these numbers later.

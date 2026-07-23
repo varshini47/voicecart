@@ -14,25 +14,21 @@
 </head>
 <body>
   <h1>VoiceCart</h1>
-  <p>Click to start recording, speak, click again to send.</p>
+  <p>Click to start recording, speak, click again to send. The agent remembers earlier turns until you reload the page.</p>
   <button id="record">Start recording</button>
   <div id="status"></div>
-  <dl class="turn" id="turn" hidden>
-    <dt>You said</dt><dd id="transcript"></dd>
-    <dt>VoiceCart replied</dt><dd id="reply-text"></dd>
-  </dl>
+  <div id="conversation"></div>
   <audio id="reply-audio" controls hidden></audio>
 
 <script>
 const recordButton = document.getElementById("record");
 const statusEl = document.getElementById("status");
-const turnEl = document.getElementById("turn");
-const transcriptEl = document.getElementById("transcript");
-const replyTextEl = document.getElementById("reply-text");
+const conversationEl = document.getElementById("conversation");
 const replyAudioEl = document.getElementById("reply-audio");
 
 let mediaRecorder;
 let chunks = [];
+let sessionId = null;
 
 async function startRecording() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -49,22 +45,30 @@ function stopRecording() {
   mediaRecorder.stream.getTracks().forEach((track) => track.stop());
 }
 
+function addTurn(speaker, text) {
+  const p = document.createElement("p");
+  p.innerHTML = `<strong>${speaker}:</strong> `;
+  p.append(text);
+  conversationEl.appendChild(p);
+}
+
 async function onRecordingStopped() {
   statusEl.textContent = "Sending...";
   const blob = new Blob(chunks, { type: "audio/webm" });
   const formData = new FormData();
   formData.append("audio", blob, "utterance.webm");
+  if (sessionId) formData.append("session_id", sessionId);
 
   try {
     const response = await fetch("/converse", { method: "POST", body: formData });
     if (!response.ok) throw new Error(`Server returned ${response.status}`);
     const data = await response.json();
 
-    transcriptEl.textContent = data.transcript || "(empty)";
-    replyTextEl.textContent = data.reply_text;
+    sessionId = data.session_id;
+    addTurn("You", data.transcript || "(empty)");
+    addTurn("VoiceCart", data.reply_text);
     replyAudioEl.src = `data:audio/wav;base64,${data.reply_audio_base64}`;
     replyAudioEl.hidden = false;
-    turnEl.hidden = false;
     statusEl.textContent = "Done.";
     await replyAudioEl.play();
   } catch (err) {

@@ -20,7 +20,7 @@ Milestone log: what was built, key decisions, and what the owner should be able 
 
 **Built:**
 - `voice/stt.py` — thin wrapper around faster-whisper (`small`, CPU, int8, language auto-detect). `transcribe(audio_bytes) -> (text, language)`.
-- `voice/tts.py` — thin wrapper around Piper. Shells out to the Piper CLI against a temp WAV file (same mechanism as the Week 0 check script) and returns the bytes. `synthesize(text) -> wav_bytes`.
+- `voice/tts.py` — thin wrapper around Piper's Python API (`PiperVoice`, loaded once at import). `synthesize(text) -> wav_bytes`. (Originally shelled out to the Piper CLI per call like the Week 0 check script — see the perf fix below for why that changed.)
 - `agent/llm.py` — provider-agnostic client: a single `requests.post` to `{LLM_BASE_URL}/chat/completions` with a fixed shopping-assistant system prompt. No SDK, no tool-calling yet (that's Week 2).
 - `agent/main.py` — FastAPI app, one endpoint `POST /converse`: audio upload → STT → LLM → TTS → JSON response (`transcript`, `language`, `reply_text`, `reply_audio_base64`). `GET /` serves `agent/static/index.html`.
 - `agent/static/index.html` — minimal record-button page (MediaRecorder, webm/opus), plays back the base64 WAV reply.
@@ -36,3 +36,22 @@ Milestone log: what was built, key decisions, and what the owner should be able 
 **Review:**
 - Run `uvicorn agent.main:app --reload`, open `http://127.0.0.1:8000/`, click to record, talk, click to stop — this was tested live in-browser already, but re-confirm on your machine.
 - Be able to explain: why turn-based before streaming (simpler to get end-to-end correct first, no VAD/barge-in complexity yet), why `requests` instead of an LLM SDK (keeps the provider swap trivial and the HTTP call fully visible), why audio comes back as base64-in-JSON instead of a raw audio response, and the TTS latency root-cause (process-per-request vs. loading the model once).
+
+---
+
+## Week 1, Milestone 1.2 — Session state (2026-07-23)
+
+**Built:**
+- `agent/session.py` — in-memory store: a plain `dict[session_id, list[{"role", "content"}]]`. `new_session_id()`, `get_history(session_id)`, `append(session_id, role, content)`.
+- `agent/llm.py`'s `reply()` now takes `(history, user_text)` and splices `history` between the system prompt and the current turn.
+- `agent/main.py`'s `/converse` accepts an optional `session_id` form field, mints one (`uuid4().hex`) if absent, always returns it, and appends both sides of each turn to that session's history.
+- `agent/static/index.html` tracks `session_id` in a JS variable across turns and now appends every turn to a running transcript in the page instead of overwriting the last one.
+
+**Key decisions:**
+- Plain dict, no TTL/eviction — matches CLAUDE.md's "no database until needed." Fine for a single-process local demo; will need addressing before any real deployment (sessions currently live and die with the process, memory grows unbounded for long-running processes).
+- Session ends when the browser tab reloads (the JS variable resets), not via any explicit "new conversation" button — kept minimal since that's enough to demonstrate both continuity and isolation.
+
+**Verified:** via curl, told the agent "my name is Varshini and I want to buy some milk," then in the same session asked "what did I just say I wanted to buy?" — reply correctly included "milk" and "Varshini." Repeating the second question with no `session_id` (a fresh session) correctly produced a reply with no memory of the milk mention. Also confirmed live in-browser by the owner.
+
+**Review:**
+- Be able to explain: why a dict instead of Postgres at this stage, why session_id is client-supplied rather than cookie-based (keeps curl/testing trivial, no cookie/CORS complexity yet), and the memory-growth caveat above (relevant when we get to Week 4 deployment).
