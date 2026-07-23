@@ -73,3 +73,27 @@ Milestone log: what was built, key decisions, and what the owner should be able 
 **Review:**
 - Run `pytest` — should be 5 passed in well under a second, no network/model access.
 - Be able to explain: why STT dominates and what the fix path is (Week 3 streaming hides it, or a smaller model trades accuracy for speed), why models had to become lazy-loaded for tests to be fast/possible at all, and what's *not* logged and why (no raw audio, no API keys, per CLAUDE.md's observability rule).
+
+---
+
+## Week 2, Milestone 2.1 — MCP commerce server (2026-07-23)
+
+**Built:**
+- `mcp_commerce/shopify_client.py` — the only module that speaks to Shopify. Wraps the Storefront GraphQL API: `search_products`, `create_cart`, `get_cart`, `add_line`, `remove_line`. Raises `ShopifyError` on GraphQL errors, mutation `userErrors`, or request failures — the one exception type the rest of mcp_commerce needs to catch.
+- `mcp_commerce/carts.py` — plain `dict[session_id, shopify_cart_id]`, same "no DB" pattern as `agent/session.py`.
+- `mcp_commerce/models.py` — pydantic result models (`SearchProductsResult`, `CartResult`, `CheckoutResult`), every one carrying an `error: str | None` field.
+- `mcp_commerce/server.py` — a `FastMCP` server (official `mcp` SDK) exposing 5 tools: `search_products`, `get_cart`, `add_to_cart`, `remove_from_cart`, `checkout`. Runs standalone via `python -m mcp_commerce.server` (stdio transport).
+- `tests/test_mcp_commerce.py` — 10 tests, mocking `shopify_client` entirely, covering structured errors, the checkout confirm-gate, empty-cart rejection, and add/remove/get cart shapes.
+
+**Blocker found and fixed (external system, not code):** the Storefront API returned zero products for every query, even though the Week 0 seed script had created 31 of them. Root cause: the custom Shopify app's Admin API token didn't have `read_publications`/`write_publications` scope, so there was no way via the API to check or fix which sales channel the products were published to. This wasn't something I could resolve by writing code — the owner had to go into the Shopify Partner Dashboard, add the scopes to the custom app's configuration, and regenerate the Admin API token. After that, all 31 grocery products (44 total, including a handful of Shopify's own default sample products) were confirmed published to "Online Store," and Storefront search started working immediately — no further fix needed, so it really was a token-scope gap, not a Storefront-visibility bug on our side.
+
+**Key decisions:**
+- `product_id` everywhere in the tool contracts is actually a Shopify **variant** GID, not a product GID. Since every seeded product has exactly one variant, there's no meaningful product/variant distinction to expose to the agent — keeping the tool contract to a single `product_id` is simpler and the agent never needs to know Shopify's data model has two levels here.
+- `checkout(session, confirm=False)` — confirm defaults to `False` and returns a structured error ("ask the user to confirm first") rather than proceeding. This is a safety gate at the tool layer itself, independent of whatever the agent decides to do — Milestone 2.2 (tool-calling agent) is responsible for only ever passing `confirm=True` after the user has explicitly said yes, but even if the agent got that wrong, the tool won't finalize checkout without it.
+- "Checkout" here means: validate the cart isn't empty, then return Shopify's real hosted `checkoutUrl` and a subtotal — it does **not** complete payment. That's what CLAUDE.md's "test-mode checkout only" means in practice: we prove the whole pipeline can reach a real, valid Shopify checkout link without ever touching payment.
+- Transport is stdio (`mcp.run()` default), matching how most local MCP servers run (e.g. Claude Desktop's config). The agent doesn't talk to this server yet — that wiring is explicitly Milestone 2.2, so 2.1 was scoped to "the server works correctly on its own," verified via a standalone MCP client script, not via the agent.
+
+**Verified:** `pytest` (10 mocked unit tests) plus a one-off manual script (not committed — a dev-only smoke test, similar in spirit to the Week 1 curl checks) that opened a real MCP `ClientSession` over stdio against the running server and exercised the full flow against the live Shopify dev store: searched "milk" and got all 3 brands back (Amul/Nandini/Mother Dairy — confirming the deliberate Week 0 ambiguity design actually works end-to-end), added 2x Amul milk, fetched the cart, called checkout without confirm (correctly got a structured error), called it again with `confirm=True` (got back a real Shopify `checkoutUrl`), removed the item, and confirmed removing it again correctly errors since it's no longer in the cart.
+
+**Review:**
+- Be able to explain: why Shopify-specific code lives only in `shopify_client.py` (swappable backend — replacing Shopify with ONDC later would mean rewriting that one file, not `server.py`'s tool contracts), why `product_id` is secretly a variant ID, why `checkout` needs a confirm flag at the tool layer *in addition to* agent-level confirmation logic, and the publications-scope story above (it's a good example of "the bug was in account configuration, not code").

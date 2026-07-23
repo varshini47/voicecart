@@ -44,8 +44,14 @@ Interview checkpoint — you should be able to explain: why turn-based first, wh
 
 ## Week 2 — Agent + MCP commerce tools + evals
 
-**Milestone 2.1 — MCP server.**
+**Milestone 2.1 — MCP server.** [x]
 `mcp_commerce` exposing: `search_products(query, limit)`, `add_to_cart(session, product_id, qty)`, `remove_from_cart`, `get_cart`, `checkout(confirm=true)`. Each wraps the Shopify Storefront API. Strict pydantic schemas, structured errors.
+
+Done 2026-07-23. `mcp_commerce/shopify_client.py` (only module that talks to Shopify — GraphQL Storefront API: product search, cart create/read/add/remove), `mcp_commerce/carts.py` (in-memory `session_id -> Shopify cart_id` map), `mcp_commerce/models.py` (pydantic result schemas, every one with an `error` field), `mcp_commerce/server.py` (FastMCP server, 5 `@mcp.tool()`-decorated functions). `product_id` in every tool is the Shopify variant GID — the agent never needs to know Shopify's product/variant distinction. `checkout` defaults `confirm=False` and returns a structured error until called with `confirm=True`; the agent (Milestone 2.2) is responsible for only passing `True` after explicit user confirmation.
+
+Blocker hit and fixed before this could start: the Storefront API returned zero results for all 31 seeded products — turned out the custom app's Admin API token was missing `read_publications`/`write_publications` scope, so there was no way to confirm/fix product-to-Online-Store-channel publication. Owner added the scopes and regenerated the token; after that, all 31 products (44 total including a few of Shopify's own sample products) were confirmed published, and Storefront search worked correctly, including returning all 3 milk brands for a "milk" query — exactly the ambiguity the Week 0 seed data was designed for.
+
+Verified two ways: (1) `tests/test_mcp_commerce.py`, 10 tests mocking `shopify_client` — covers structured errors, the checkout confirm-gate, empty-cart rejection, add/remove/get cart shapes. (2) A one-off manual script driving a real MCP `ClientSession` over stdio against the live server (not committed — dev-only smoke test) that exercised the whole flow against the actual Shopify dev store: searched "milk" (got all 3 brands), added 2x Amul milk, fetched the cart, checkout without confirm (correctly errored), checkout with confirm=true (got back a real `checkoutUrl`), removed the item, then confirmed removing again correctly errors since it's no longer in the cart.
 
 **Milestone 2.2 — Tool-calling agent loop.**
 Replace the echo agent: LLM now decides between replying, calling a tool, or asking a clarifying question. Implement confirmation-before-checkout and ambiguity clarification ("Amul or Nandini?"). Retry-once on recoverable tool errors.
