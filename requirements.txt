@@ -2,3 +2,6 @@ faster-whisper
 piper-tts
 python-dotenv
 requests
+fastapi
+uvicorn[standard]
+python-multipart
