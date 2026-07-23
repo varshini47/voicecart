@@ -20,7 +20,7 @@ Milestone log: what was built, key decisions, and what the owner should be able 
 
 **Built:**
 - `voice/stt.py` — thin wrapper around faster-whisper (`small`, CPU, int8, language auto-detect). `transcribe(audio_bytes) -> (text, language)`.
-- `voice/tts.py` — thin wrapper around Piper's Python API (`PiperVoice`, loaded once at import). `synthesize(text) -> wav_bytes`. (Originally shelled out to the Piper CLI per call like the Week 0 check script — see the perf fix below for why that changed.)
+- `voice/tts.py` — thin wrapper around Piper's Python API (`PiperVoice`, loaded once and reused across calls — see Milestone 1.3 for why loading became lazy instead of at-import). `synthesize(text) -> wav_bytes`. (Originally shelled out to the Piper CLI per call like the Week 0 check script — see the perf fix below for why that changed.)
 - `agent/llm.py` — provider-agnostic client: a single `requests.post` to `{LLM_BASE_URL}/chat/completions` with a fixed shopping-assistant system prompt. No SDK, no tool-calling yet (that's Week 2).
 - `agent/main.py` — FastAPI app, one endpoint `POST /converse`: audio upload → STT → LLM → TTS → JSON response (`transcript`, `language`, `reply_text`, `reply_audio_base64`). `GET /` serves `agent/static/index.html`.
 - `agent/static/index.html` — minimal record-button page (MediaRecorder, webm/opus), plays back the base64 WAV reply.
@@ -55,3 +55,21 @@ Milestone log: what was built, key decisions, and what the owner should be able 
 
 **Review:**
 - Be able to explain: why a dict instead of Postgres at this stage, why session_id is client-supplied rather than cookie-based (keeps curl/testing trivial, no cookie/CORS complexity yet), and the memory-growth caveat above (relevant when we get to Week 4 deployment).
+
+---
+
+## Week 1, Milestone 1.3 — Tests + latency logging (2026-07-23)
+
+**Built:**
+- `tests/conftest.py` — `FakePipeline` fixture monkeypatches `voice.stt.transcribe`, `agent.llm.reply`, `voice.tts.synthesize` module-level, and clears `agent.session._sessions` before each test.
+- `tests/test_converse.py` — 5 tests: response shape, a fresh `session_id` minted when absent, history correctly threaded into the LLM across repeat calls with the same `session_id`, isolation between different `session_id`s, and the latency log line containing the expected fields without leaking raw audio bytes.
+- `pytest.ini` — `pythonpath = .` so `tests/` can `from agent.main import app` and `from tests.conftest import FakePipeline` without an installed package or `__init__.py` files.
+- `agent/main.py` now times STT/LLM/TTS with `time.perf_counter()` and logs one line per turn via the stdlib `logging` module: `session=... stt_ms=... llm_ms=... tts_ms=... total_ms=... transcript=... reply_text=...`.
+
+**Key decision — the one worth defending in an interview:** `voice/stt.py` and `voice/tts.py` originally loaded their models (Whisper, Piper) at *import* time. That's fine for a running server (load once, serve fast) but wrong for tests: importing `agent.main` transitively imports both wrapper modules, so every test run would eat the real ~6s model-load cost even though the tests mock `transcribe`/`synthesize` and never touch the real models — and CI wouldn't even have the gitignored Piper `.onnx` file to load. Fixed by making both loads *lazy* (load on first real call, memoized after). Tests now run in ~0.05s. Tradeoff: the first real `/converse` call after server startup now pays that load cost instead of it happening at startup — measured `tts_ms≈1900` on the first call after a fresh start vs `≈200` on every call after. Acceptable for a local demo; worth another look if this ever becomes a warm, always-on prod service (e.g. a startup event that forces the load proactively).
+
+**Latency numbers (for the resume/interview):** stt_ms≈5000 (faster-whisper `small`, CPU — the dominant cost, expected), llm_ms≈550 (Groq), tts_ms≈200 warm / ≈1900 cold-start. Total per turn ≈6-7s warm.
+
+**Review:**
+- Run `pytest` — should be 5 passed in well under a second, no network/model access.
+- Be able to explain: why STT dominates and what the fix path is (Week 3 streaming hides it, or a smaller model trades accuracy for speed), why models had to become lazy-loaded for tests to be fast/possible at all, and what's *not* logged and why (no raw audio, no API keys, per CLAUDE.md's observability rule).

@@ -8,6 +8,8 @@ shopping-assistant persona, but now remembers earlier turns in the session.
 from __future__ import annotations
 
 import base64
+import logging
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,6 +21,9 @@ load_dotenv()
 
 from agent import llm, session
 from voice import stt, tts
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("voicecart.agent")
 
 app = FastAPI(title="VoiceCart Agent")
 
@@ -44,14 +49,32 @@ async def converse(audio: UploadFile, session_id: str | None = Form(None)) -> Co
         session_id = session.new_session_id()
 
     audio_bytes = await audio.read()
+
+    t0 = time.perf_counter()
     transcript, language = stt.transcribe(audio_bytes)
+    t1 = time.perf_counter()
 
     history = session.get_history(session_id)
     reply_text = llm.reply(history, transcript)
+    t2 = time.perf_counter()
+
     session.append(session_id, "user", transcript)
     session.append(session_id, "assistant", reply_text)
 
     reply_audio = tts.synthesize(reply_text)
+    t3 = time.perf_counter()
+
+    # Log transcripts and tool calls, never raw audio or API keys (CLAUDE.md).
+    logger.info(
+        "session=%s stt_ms=%.0f llm_ms=%.0f tts_ms=%.0f total_ms=%.0f transcript=%r reply_text=%r",
+        session_id,
+        (t1 - t0) * 1000,
+        (t2 - t1) * 1000,
+        (t3 - t2) * 1000,
+        (t3 - t0) * 1000,
+        transcript,
+        reply_text,
+    )
 
     return ConverseResponse(
         session_id=session_id,
