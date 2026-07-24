@@ -64,13 +64,25 @@ Notable non-bug found during testing: faster-whisper consistently mis-transcribe
 
 Not exhaustively tested by hand: the specific "retry once with corrected arguments" path (hard to force deterministically in a one-off conversation) and quantity/unit edge cases like "half a dozen eggs." Both are exactly what Milestone 2.3's eval suite is for — systematic scenario coverage instead of ad hoc manual conversations.
 
-**Milestone 2.3 — Evals v1.**
+**Milestone 2.3 — Evals v1.** [x]
 YAML scenarios + runner as specified in CLAUDE.md. 20 scenarios: happy paths, ambiguous items, quantity edge cases ("half a dozen eggs"), a checkout-without-confirmation trap the agent must not fall into. Wire into pytest.
 
-**Milestone 2.3 — Evals v1.**
-YAML scenarios + runner as specified in CLAUDE.md. 20 scenarios: happy paths, ambiguous items, quantity edge cases ("half a dozen eggs"), a checkout-without-confirmation trap the agent must not fall into. Wire into pytest.
+Done 2026-07-25. `evals/fake_shopify.py` (in-memory catalog + cart backend, same function signatures as `mcp_commerce.shopify_client`), `evals/fake_mcp_client.py` (in-process fake MCP client — calls the real `mcp_commerce.server` tool functions directly via `list_tools()`, no subprocess needed), `evals/scenarios/*.yaml` (20 scenarios), `evals/runner.py` (loads scenarios, runs each through the real `agent_loop.run_turn`, scores tool selection/clarification/checkout-safety/final-cart-state, proactively throttles LLM calls 3s apart). `tests/test_evals.py` parametrizes pytest over all 20 scenarios, marked `@pytest.mark.eval` and excluded from the default `pytest` run (see `pytest.ini`) since they hit the live LLM and are slow/quota-consuming — run explicitly with `pytest -m eval` or `python -m evals.runner`.
 
-Interview checkpoint: why MCP instead of direct function calls (swappable backend, standard contract), how you score an agent, what your pass rate was before/after prompt fixes.
+Final result: **20/20 scenarios passing (100%)** against live Groq (`llama-3.3-70b-versatile`), Shopify mocked.
+
+Real bugs found and fixed along the way (not just eval-writing — genuine agent/infra fixes):
+1. Session-id leakage: the LLM was inventing placeholder `session` values (e.g. `"current_session"`) because `session` was exposed as a normal fillable tool parameter. Fixed by stripping `session` from the tool schemas shown to the LLM (`agent/mcp_client.py`'s `build_tool_schemas()`) and having `agent_loop.run_turn` auto-inject the real `session_id`.
+2. Half-a-dozen-eggs quantity bug: agent added quantity=6 instead of 1 for "Eggs 6pc Tray." Fixed via a tightened system-prompt example (`agent/agent_loop.py`).
+3. Bread brand ambiguity: agent silently narrowed its own search instead of asking, then treated the user's brand answer as an *additional* item instead of resolving the same request — ended up with two breads in the cart. Fixed via explicit "don't guess by re-searching, and a follow-up answer resolves the same request" prompt guidance.
+4. Checkout-on-empty-cart: agent called `checkout(confirm=true)` on the very first message ("Check out my order.") without any prior confirmation exchange — worked correctly when the cart already had an item, only failed on an empty first-turn cart. Fixed via explicit "even on the first message, even if empty" prompt guidance.
+5. Reliability bug in `agent/llm.py`: Groq/Llama-3.3 occasionally emits a malformed non-JSON function-call token (`<function=name{...}>`) instead of proper `tool_calls`, surfaced as a 400 `tool_use_failed` error — confirmed via direct API probing that this is inference noise (not deterministic on the prompt: identical requests sometimes fail every time, sometimes succeed at a later moment) and that a plain temperature=0 retry isn't reliable, but nudging the temperature up breaks the loop. Added a bounded retry with increasing temperature specifically for this error code, alongside the existing 429 retry.
+
+One eval design correction: `remove_item_not_in_cart` originally asserted `remove_from_cart` must be called even for an item that was never added. The agent instead called `get_cart`, saw the item wasn't there, and answered correctly without calling `remove_from_cart` (there was no `product_id` to pass — nothing to remove). Rewrote the scenario to `forbid_tools: [remove_from_cart]` and tightened the prompt to make this flow (search → check cart → remove-or-explain) explicit and consistent, rather than forcing a pointless tool call.
+
+Groq free-tier daily quota (100k TPD) was hit and fully recovered twice during this milestone (once mid-session on 2026-07-23, once again during verification) — a real constraint of the free tier, worked around by conserving quota (targeted scenario batches instead of full 20-scenario re-runs) rather than by creating additional accounts, which would violate Groq's terms.
+
+Interview checkpoint: why MCP instead of direct function calls (swappable backend, standard contract), how you score an agent, what your pass rate was before/after prompt fixes, the session-id leakage bug and why tool schemas shouldn't expose infra-only parameters to the LLM, and the malformed-tool-call reliability story (inference noise vs. deterministic bug, and why the fix is a retry with varied sampling rather than a fixed backoff).
 
 ---
 

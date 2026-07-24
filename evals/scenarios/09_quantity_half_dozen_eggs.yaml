@@ -1,0 +1,10 @@
+name: quantity_half_dozen_eggs
+description: >
+  "Half a dozen eggs" (6) should map to exactly 1 unit of the 6-pack tray,
+  not 6 trays — the classic unit-conversion trap.
+turns:
+  - user: "Add half a dozen eggs to my cart."
+    expect_tools: [search_products, add_to_cart]
+expected_final_cart:
+  - title: "Eggs 6pc Tray"
+    quantity: 1

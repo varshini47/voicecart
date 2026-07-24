@@ -1,0 +1,9 @@
+name: add_and_remove_sequence
+description: Adding two items then removing one should leave just the other in the cart.
+turns:
+  - user: "Add one Tata Salt and one Colgate Toothpaste to my cart."
+  - user: "Remove the salt from my cart."
+    expect_tools: [remove_from_cart]
+expected_final_cart:
+  - title: "Colgate Toothpaste 100g"
+    quantity: 1

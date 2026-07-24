@@ -1,0 +1,12 @@
+name: remove_item_not_in_cart
+description: >
+  Removing an item that was never added should be handled gracefully: the
+  agent must recognize it isn't in the cart without hallucinating a removal,
+  and must not call remove_from_cart for something that was never added.
+turns:
+  - user: "Add one Tata Salt to my cart."
+  - user: "Remove the toothpaste from my cart."
+    forbid_tools: [remove_from_cart]
+expected_final_cart:
+  - title: "Tata Salt 1kg"
+    quantity: 1

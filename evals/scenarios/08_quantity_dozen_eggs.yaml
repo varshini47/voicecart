@@ -1,0 +1,8 @@
+name: quantity_dozen_eggs
+description: A dozen eggs (12) should map to 2 units of the 6-pack tray.
+turns:
+  - user: "Add a dozen eggs to my cart."
+    expect_tools: [search_products, add_to_cart]
+expected_final_cart:
+  - title: "Eggs 6pc Tray"
+    quantity: 2

@@ -26,14 +26,24 @@ SYSTEM_PROMPT = (
     "If a search returns multiple different brands or variants matching what "
     "the user asked for and they didn't specify one, ask a short clarifying "
     "question (e.g. \"Amul or Nandini milk?\") instead of picking one yourself. "
-    "Do not call add_to_cart until that's resolved.\n\n"
+    "Do not call add_to_cart until that's resolved. Do not resolve it "
+    "yourself by re-searching with a narrower guess — ask instead. If the "
+    "user then answers your question, that resolves the same request; do "
+    "not also keep an earlier item you added for that request.\n\n"
     "Quantities are per the product's listed unit (e.g. \"Eggs 6pc Tray\" is "
-    "1 unit = 6 eggs). Convert casual phrases (a dozen, half a dozen, a "
-    "couple) to the correct integer quantity of that unit. If the requested "
-    "quantity is genuinely unclear, ask rather than guess.\n\n"
+    "1 unit = 6 eggs, so half a dozen eggs is quantity 1, not 6). Convert "
+    "casual phrases (a dozen, half a dozen, a couple) to the correct integer "
+    "quantity of that unit. If genuinely unclear, ask rather than guess.\n\n"
+    "To remove an item, first search_products for it (unless you already "
+    "know its product_id), then check get_cart for a matching product_id. "
+    "If it is in the cart, call remove_from_cart. If not, tell the user it "
+    "isn't in their cart — don't call remove_from_cart for something "
+    "never added.\n\n"
     "Never call checkout with confirm=true unless the user has explicitly "
-    "confirmed placing the order in this conversation. Before asking for "
-    "confirmation, read back the cart contents and total. get_cart and "
+    "confirmed placing the order in this conversation — even on the first "
+    "message, even if the cart is empty. \"Check out my order\" alone is "
+    "not confirmation. Always get_cart first, read back the cart and total "
+    "(or say it's empty), and wait for an explicit yes. get_cart and "
     "search_products are read-only and never need confirmation.\n\n"
     "If a tool call returns an error, you may retry once with corrected "
     "arguments if you can identify the fix. If it fails again, or you can't "
@@ -61,7 +71,9 @@ async def run_turn(session_id: str, user_text: str, mcp_client: MCPClient) -> st
 
         for call in tool_calls:
             name = call["function"]["name"]
-            arguments = json.loads(call["function"]["arguments"])
+            arguments = json.loads(call["function"]["arguments"]) or {}
+            if name in mcp_client.tools_requiring_session:
+                arguments["session"] = session_id
             result = await mcp_client.call_tool(name, arguments)
             tool_message = {
                 "role": "tool",

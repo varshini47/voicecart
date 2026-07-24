@@ -1,0 +1,12 @@
+name: ambiguous_dal_type
+description: Dal matches two different dal types - the agent must ask which one.
+turns:
+  - user: "Add one packet of dal to my cart."
+    expect_tools: [search_products]
+    forbid_tools: [add_to_cart]
+    expect_clarification: true
+  - user: "Toor dal."
+    expect_tools: [add_to_cart]
+expected_final_cart:
+  - title: "Toor Dal 1kg"
+    quantity: 1

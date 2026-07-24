@@ -1,0 +1,12 @@
+name: ambiguous_biscuits
+description: Biscuits matches two different products - the agent must ask which one.
+turns:
+  - user: "Add one pack of biscuits to my cart."
+    expect_tools: [search_products]
+    forbid_tools: [add_to_cart]
+    expect_clarification: true
+  - user: "Parle-G, please."
+    expect_tools: [add_to_cart]
+expected_final_cart:
+  - title: "Parle-G Biscuits 250g"
+    quantity: 1

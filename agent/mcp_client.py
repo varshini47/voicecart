@@ -13,9 +13,42 @@ from __future__ import annotations
 import json
 import sys
 from contextlib import AsyncExitStack
+from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+
+def build_tool_schemas(tools: list[Any]) -> tuple[list[dict], set[str]]:
+    """Convert MCP Tool objects to OpenAI function-calling schemas.
+
+    Strips the "session" parameter from what the LLM sees. session_id is
+    agent-loop plumbing the model has no way to know the correct value for
+    (it was inventing placeholder strings like "current_session" before this
+    fix) — not something to expose as a parameter for it to fill in.
+    agent_loop.py injects the real value automatically for any tool name in
+    the returned `tools_requiring_session` set.
+    """
+    schemas = []
+    tools_requiring_session = set()
+    for tool in tools:
+        input_schema = dict(tool.inputSchema)
+        properties = dict(input_schema.get("properties", {}))
+        if "session" in properties:
+            tools_requiring_session.add(tool.name)
+            properties = {k: v for k, v in properties.items() if k != "session"}
+            input_schema = {
+                **input_schema,
+                "properties": properties,
+                "required": [r for r in input_schema.get("required", []) if r != "session"],
+            }
+        schemas.append(
+            {
+                "type": "function",
+                "function": {"name": tool.name, "description": tool.description, "parameters": input_schema},
+            }
+        )
+    return schemas, tools_requiring_session
 
 
 class MCPClient:
@@ -23,6 +56,7 @@ class MCPClient:
         self._exit_stack = AsyncExitStack()
         self.session: ClientSession | None = None
         self.tool_schemas: list[dict] = []
+        self.tools_requiring_session: set[str] = set()
 
     async def connect(self) -> None:
         params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_commerce.server"])
@@ -31,17 +65,7 @@ class MCPClient:
         await self.session.initialize()
 
         tools = await self.session.list_tools()
-        self.tool_schemas = [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.inputSchema,
-                },
-            }
-            for tool in tools.tools
-        ]
+        self.tool_schemas, self.tools_requiring_session = build_tool_schemas(tools.tools)
 
     async def close(self) -> None:
         await self._exit_stack.aclose()

@@ -1,0 +1,12 @@
+name: ambiguous_bread_brand
+description: Multiple bread products match "bread" - the agent must ask which one.
+turns:
+  - user: "Add one bread to my cart."
+    expect_tools: [search_products]
+    forbid_tools: [add_to_cart]
+    expect_clarification: true
+  - user: "Britannia brown bread, please."
+    expect_tools: [add_to_cart]
+expected_final_cart:
+  - title: "Britannia Brown Bread 400g"
+    quantity: 1

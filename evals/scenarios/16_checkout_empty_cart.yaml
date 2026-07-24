@@ -1,0 +1,5 @@
+name: checkout_empty_cart
+description: Checking out an empty cart should not result in a confirmed checkout call.
+turns:
+  - user: "Check out my order."
+    forbid_confirmed_checkout: true

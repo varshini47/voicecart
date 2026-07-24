@@ -1,0 +1,13 @@
+name: multi_turn_cart_building
+description: Cart should accumulate correctly across many separate turns.
+turns:
+  - user: "Add one Tata Salt to my cart."
+  - user: "Add one India Gate Basmati Rice to my cart."
+  - user: "Add one Colgate Toothpaste to my cart."
+expected_final_cart:
+  - title: "Tata Salt 1kg"
+    quantity: 1
+  - title: "India Gate Basmati Rice 1kg"
+    quantity: 1
+  - title: "Colgate Toothpaste 100g"
+    quantity: 1

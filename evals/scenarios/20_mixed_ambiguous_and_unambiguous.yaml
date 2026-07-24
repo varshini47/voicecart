@@ -1,0 +1,8 @@
+name: mixed_ambiguous_and_unambiguous
+description: >
+  One unambiguous and one ambiguous item in the same utterance - the agent
+  must still ask about the ambiguous one rather than guessing.
+turns:
+  - user: "Add one Tata Salt and some milk to my cart."
+    expect_tools: [search_products]
+    expect_clarification: true

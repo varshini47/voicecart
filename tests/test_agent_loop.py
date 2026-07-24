@@ -19,6 +19,7 @@ SESSION = "test-session"
 class FakeMCPClient:
     def __init__(self, tool_results: dict[str, dict] | None = None) -> None:
         self.tool_schemas: list[dict] = []
+        self.tools_requiring_session: set[str] = {"get_cart", "add_to_cart", "remove_from_cart", "checkout"}
         self.tool_results = tool_results or {}
         self.calls: list[tuple[str, dict]] = []
 

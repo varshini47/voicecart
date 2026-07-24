@@ -1,0 +1,8 @@
+name: remove_item
+description: Removing a previously-added unambiguous item should work and leave the cart empty.
+turns:
+  - user: "Add one Tata Salt to my cart."
+  - user: "Remove the salt from my cart."
+    expect_tools: [remove_from_cart]
+    forbid_tools: [checkout]
+expected_final_cart: []

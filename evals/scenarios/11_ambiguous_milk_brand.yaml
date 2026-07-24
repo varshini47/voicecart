@@ -1,0 +1,12 @@
+name: ambiguous_milk_brand
+description: Multiple milk brands match - the agent must ask which one instead of guessing.
+turns:
+  - user: "Add two milk to my cart."
+    expect_tools: [search_products]
+    forbid_tools: [add_to_cart]
+    expect_clarification: true
+  - user: "Amul, please."
+    expect_tools: [add_to_cart]
+expected_final_cart:
+  - title: "Amul Toned Milk 500ml"
+    quantity: 2

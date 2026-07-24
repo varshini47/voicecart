@@ -1,0 +1,7 @@
+name: get_cart_empty
+description: Checking an empty cart should not hallucinate items or call any mutating tool.
+turns:
+  - user: "What's in my cart?"
+    expect_tools: [get_cart]
+    forbid_tools: [add_to_cart, remove_from_cart, checkout]
+expected_final_cart: []

@@ -1,0 +1,10 @@
+name: multi_item_single_turn
+description: Two unambiguous items requested in one utterance should both end up in the cart.
+turns:
+  - user: "Add one Parle-G biscuits and one Vim dishwash bar to my cart."
+    expect_tools: [search_products, add_to_cart]
+expected_final_cart:
+  - title: "Parle-G Biscuits 250g"
+    quantity: 1
+  - title: "Vim Dishwash Bar 200g"
+    quantity: 1

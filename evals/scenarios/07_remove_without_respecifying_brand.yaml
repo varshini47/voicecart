@@ -1,0 +1,10 @@
+name: remove_without_respecifying_brand
+description: >
+  Session memory - removing "the milk" shouldn't require re-specifying the
+  brand already established earlier in the conversation.
+turns:
+  - user: "Add one Amul milk to my cart."
+  - user: "Remove the milk from my cart."
+    expect_tools: [remove_from_cart]
+    expect_clarification: false
+expected_final_cart: []

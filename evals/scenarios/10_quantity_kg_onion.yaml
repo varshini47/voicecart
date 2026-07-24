@@ -1,0 +1,8 @@
+name: quantity_kg_onion
+description: An explicit weight ("5 kg") should map directly to the matching quantity of the 1kg unit.
+turns:
+  - user: "Add 5 kg of onions to my cart."
+    expect_tools: [search_products, add_to_cart]
+expected_final_cart:
+  - title: "Onion 1kg"
+    quantity: 5

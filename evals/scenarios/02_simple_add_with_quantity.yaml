@@ -1,0 +1,9 @@
+name: simple_add_with_quantity
+description: Quantity phrasing ("three packets of") should map to the correct integer quantity.
+turns:
+  - user: "Add three packets of Maggi noodles to my cart."
+    expect_tools: [search_products, add_to_cart]
+    expect_clarification: false
+expected_final_cart:
+  - title: "Maggi 2-Minute Noodles 70g"
+    quantity: 3
