@@ -8,6 +8,9 @@ finalized utterance, multi-turn over one connection, and clean "stop".
 
 from __future__ import annotations
 
+import asyncio
+import threading
+
 from fastapi.testclient import TestClient
 
 from tests.conftest import FakePipeline
@@ -17,18 +20,25 @@ FRAME = b"\x00" * FRAME_BYTES
 
 
 class FakeEndpointer:
-    """Finalizes an utterance every `frames_per_utterance` frames, no VAD involved."""
+    """Finalizes an utterance every `frames_per_utterance` frames, no VAD
+    involved. speech_confirmed mirrors the real Endpointer's contract
+    closely enough for tests: true from the first buffered frame until
+    finalized (the in_speech-vs-speech_confirmed noise-robustness
+    distinction itself is covered by tests/test_vad.py, not here)."""
 
     def __init__(self, frames_per_utterance: int = 2) -> None:
         self.frames_per_utterance = frames_per_utterance
         self._buffer: list[bytes] = []
+        self.speech_confirmed = False
 
     def accept_frame(self, frame: bytes) -> bytes | None:
         self._buffer.append(frame)
+        self.speech_confirmed = True
         if len(self._buffer) < self.frames_per_utterance:
             return None
         audio = b"".join(self._buffer)
         self._buffer = []
+        self.speech_confirmed = False
         return audio
 
     def force_finalize(self) -> bytes | None:
@@ -36,6 +46,7 @@ class FakeEndpointer:
             return None
         audio = b"".join(self._buffer)
         self._buffer = []
+        self.speech_confirmed = False
         return audio
 
 
@@ -62,6 +73,8 @@ def test_turn_sent_after_endpointer_finalizes(client: TestClient, mock_pipeline:
         ws.receive_json()  # ready
 
         ws.send_bytes(FRAME)  # not enough frames yet
+        speech_started = ws.receive_json()
+        assert speech_started["type"] == "speech_started"
         ws.send_bytes(FRAME)  # finalizes the utterance
 
         turn = ws.receive_json()
@@ -153,6 +166,8 @@ def test_finalize_message_forces_turn_before_endpointer_would(
         ws.receive_json()  # ready
 
         ws.send_bytes(FRAME)
+        speech_started = ws.receive_json()
+        assert speech_started["type"] == "speech_started"
         ws.send_bytes(FRAME)
         ws.send_text('{"type": "finalize"}')
 
@@ -190,3 +205,47 @@ def test_session_id_from_query_param_is_reused(client: TestClient, mock_pipeline
         assert turn["session_id"] == "my-session"
 
     assert mock_pipeline.run_turn_calls == [("my-session", "hello world")]
+
+
+def test_barge_in_cancels_in_flight_turn_and_drops_queued_utterance(
+    client: TestClient, mock_pipeline: FakePipeline, monkeypatch
+) -> None:
+    # frames_per_utterance=1 so each single FRAME finalizes its own
+    # utterance immediately (no speech_started noise to account for here —
+    # that's covered by other tests).
+    _use_fake_endpointer(monkeypatch, frames_per_utterance=1)
+
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
+
+    async def run_turn_stuck_once(session_id: str, user_text: str, mcp_client) -> str:
+        calls.append(user_text)
+        if len(calls) == 1:
+            started.set()
+            await asyncio.to_thread(release.wait)  # released at the end of the test
+            return "should never be seen — this turn gets cancelled"
+        return f"reply to: {user_text}"
+
+    monkeypatch.setattr("agent.main.agent_loop.run_turn", run_turn_stuck_once)
+
+    try:
+        with client.websocket_connect("/converse/stream") as ws:
+            ws.receive_json()  # ready
+
+            ws.send_bytes(FRAME)  # first utterance: starts the stuck turn
+            assert started.wait(timeout=2), "run_turn was never called for the first utterance"
+
+            ws.send_bytes(FRAME)  # second utterance: queues up behind the stuck one
+            ws.send_text('{"type": "barge_in"}')  # cancel the stuck turn, drop the queued one
+
+            ws.send_bytes(FRAME)  # third utterance: should be processed fresh
+            turn = ws.receive_json()
+            assert turn["type"] == "turn"
+            assert turn["reply_text"] == "reply to: hello world"
+    finally:
+        release.set()  # let the cancelled call's background thread exit cleanly
+
+    # Exactly 2 real run_turn calls: the cancelled first one, and the third
+    # utterance — the second (queued, never started) was dropped entirely.
+    assert calls == ["hello world", "hello world"]

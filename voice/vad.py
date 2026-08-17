@@ -79,6 +79,29 @@ class Endpointer:
     _speech_frame_total: int = field(default=0, init=False)
     _buffer: list[bytes] = field(default_factory=list, init=False)
 
+    @property
+    def in_speech(self) -> bool:
+        """True once START_SPEECH_FRAMES (~90ms) of speech has been
+        confirmed and until the utterance is finalized/reset. This flips
+        quickly by design, to buffer audio as soon as speech plausibly
+        starts — too quickly to trust as a barge-in trigger on its own;
+        see speech_confirmed for that.
+        """
+        return self._in_speech
+
+    @property
+    def speech_confirmed(self) -> bool:
+        """True once in_speech AND enough real speech has actually
+        accumulated (MIN_SPEECH_FRAMES) to trust it as genuine talking
+        rather than a brief noise/echo blip. Milestone 3.2 (barge-in) uses
+        this, not in_speech, as its trigger: in_speech alone flips true
+        after just ~90ms, which is fine for "start buffering, we'll verify
+        later" but not for "interrupt an actively-playing reply right now"
+        — a false positive there means wrongly cutting off real audio
+        instead of just discarding a bit of silent buffer.
+        """
+        return self._in_speech and self._speech_frame_total >= MIN_SPEECH_FRAMES
+
     def accept_frame(self, frame: bytes) -> bytes | None:
         if len(frame) != FRAME_BYTES:
             raise ValueError(f"expected {FRAME_BYTES}-byte frames, got {len(frame)}")

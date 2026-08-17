@@ -25,6 +25,17 @@ NO_SPEECH_PROB_THRESHOLD = 0.6
 # high-no_speech_prob segments catches that case using Whisper's own
 # confidence signal instead of guessing from duration alone.
 
+LOW_LANGUAGE_CONFIDENCE_THRESHOLD = 0.6
+# info.language_probability below this means language auto-detect itself
+# wasn't confident. Auto-detect stays on (needed for Hinglish, per
+# CLAUDE.md), but it's least reliable on exactly the short/unclear
+# utterances where it matters most — seen live: a short English utterance
+# misdetected as Hindi, transcribed entirely in Devanagari script, which
+# then can't match anything in the (English) product catalog. Retried once
+# with English forced only when detection was already unsure — a confident
+# non-English detection is left alone, so genuine Hindi/other-language
+# speech isn't second-guessed.
+
 
 def _get_model() -> WhisperModel:
     global _model
@@ -33,14 +44,24 @@ def _get_model() -> WhisperModel:
     return _model
 
 
+def _transcribe_once(audio_bytes: bytes, language: str | None = None):
+    segments, info = _get_model().transcribe(io.BytesIO(audio_bytes), language=language)
+    text = " ".join(
+        segment.text.strip() for segment in segments if segment.no_speech_prob < NO_SPEECH_PROB_THRESHOLD
+    )
+    return text, info
+
+
 def transcribe(audio_bytes: bytes) -> tuple[str, str]:
     """Transcribe audio bytes (any ffmpeg/PyAV-decodable format) to text.
 
     Returns (text, detected_language). A segment Whisper itself flags as
     likely non-speech is dropped rather than included in the transcript.
     """
-    segments, info = _get_model().transcribe(io.BytesIO(audio_bytes))
-    text = " ".join(
-        segment.text.strip() for segment in segments if segment.no_speech_prob < NO_SPEECH_PROB_THRESHOLD
-    )
+    text, info = _transcribe_once(audio_bytes)
+
+    if info.language != "en" and info.language_probability < LOW_LANGUAGE_CONFIDENCE_THRESHOLD:
+        text, info = _transcribe_once(audio_bytes, language="en")
+        return text, "en"
+
     return text, info.language

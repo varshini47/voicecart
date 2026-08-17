@@ -12,7 +12,8 @@
 </head>
 <body>
   <h1>VoiceCart — streaming</h1>
-  <p>Click start, then talk. Click "Done talking" after each question to get a reply right away — the server also auto-detects a long pause, but don't rely on that. Click stop when you're done for good.</p>
+  <p>Click start, then talk. Click "Done talking" after each question to get a reply right away — the server also auto-detects a long pause, but don't rely on that. You can also just start talking while a reply is playing to interrupt it. Click stop when you're done for good.</p>
+  <p><strong>Use headphones if you can.</strong> Without them, the mic can pick up the assistant's own reply coming out of your speakers and mistake it for you interrupting.</p>
   <button id="toggle">Start streaming</button>
   <button id="finalize" disabled>Done talking</button>
   <div id="status"></div>
@@ -36,6 +37,10 @@ let processorNode = null;
 let silentSink = null;
 let pcmBuffer = new Int16Array(0); // leftover 16kHz samples not yet forming a full frame
 let manualStop = false;
+let isPlayingReply = false; // Milestone 3.2 (barge-in): only need to stop playback if it's actually playing
+
+replyAudioEl.addEventListener("ended", () => { isPlayingReply = false; });
+replyAudioEl.addEventListener("pause", () => { isPlayingReply = false; });
 
 function downsampleToInt16(float32Input, inputSampleRate) {
   const ratio = inputSampleRate / TARGET_SAMPLE_RATE;
@@ -91,6 +96,21 @@ async function startStreaming() {
       const data = JSON.parse(event.data);
       if (data.type === "ready") {
         statusEl.textContent = "Listening...";
+      } else if (data.type === "speech_started") {
+        // Milestone 3.2 (barge-in): only a genuine interruption — talking
+        // while a reply is actively playing — should cancel anything.
+        // Starting a new utterance while a previous turn is still merely
+        // *computing* (STT/LLM/TTS, often 5-15s) is normal back-to-back
+        // conversation, not an interruption, and must NOT cancel it —
+        // otherwise every turn just gets cancelled by the next one
+        // starting, and nothing ever replies.
+        if (isPlayingReply) {
+          ws.send(JSON.stringify({ type: "barge_in" }));
+          replyAudioEl.pause();
+          replyAudioEl.currentTime = 0;
+          isPlayingReply = false;
+          statusEl.textContent = "Heard you — go ahead...";
+        }
       } else if (data.type === "turn") {
         addTurn("You", data.transcript || "(empty)");
         addTurn("VoiceCart", data.reply_text);
@@ -99,10 +119,12 @@ async function startStreaming() {
         statusEl.textContent = "Reply received — listening again...";
         try {
           await replyAudioEl.play();
+          isPlayingReply = true;
         } catch (playErr) {
           // Browser autoplay policy can block programmatic play() outside a
           // user-gesture call stack; the reply is still on the page (text +
           // a visible audio control) even if it doesn't play automatically.
+          isPlayingReply = false;
           statusEl.textContent = "Reply received (click the audio player below to hear it — autoplay was blocked).";
         }
       } else if (data.type === "error") {
@@ -128,7 +150,16 @@ async function startStreaming() {
     ws.onerror = reject;
   });
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // echoCancellation asks the browser to actively cancel out whatever this
+  // same device is currently playing through its own speakers before it
+  // reaches the mic signal we process — directly relevant here, since a
+  // reply playing out loud can otherwise get picked back up as if it were
+  // the user talking (see agent/ws_stream.py's speech_confirmed comment).
+  // Not a full fix on every OS/hardware combination — headphones remain
+  // the reliable way to eliminate the acoustic path entirely.
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
   audioContext = new AudioContext();
   sourceNode = audioContext.createMediaStreamSource(stream);
 

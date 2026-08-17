@@ -20,6 +20,7 @@ import base64
 import json
 import logging
 import time
+from dataclasses import dataclass
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -32,6 +33,15 @@ from voice.vad import FRAME_BYTES, Endpointer
 logger = logging.getLogger("voicecart.agent")
 
 
+@dataclass
+class _TurnState:
+    """Holds the currently-running turn's task so a "barge_in" message (see
+    handle_stream) can cancel it from a different coroutine. Plain mutable
+    state, not a queue — there's only ever at most one turn running."""
+
+    current_task: asyncio.Task | None = None
+
+
 async def handle_stream(websocket: WebSocket, mcp_client: MCPClient, session_id: str | None) -> None:
     await websocket.accept()
     if session_id is None:
@@ -39,6 +49,7 @@ async def handle_stream(websocket: WebSocket, mcp_client: MCPClient, session_id:
     await websocket.send_json({"type": "ready", "session_id": session_id})
 
     endpointer = Endpointer()
+    was_speech_confirmed = False
 
     # A turn (STT -> LLM -> TTS) can take several seconds. Processing it
     # inline here would block this loop's `websocket.receive()`, so any
@@ -52,7 +63,10 @@ async def handle_stream(websocket: WebSocket, mcp_client: MCPClient, session_id:
     # utterances are handed off to run one at a time, in order, without
     # blocking frame ingestion.
     utterance_queue: asyncio.Queue[bytes] = asyncio.Queue()
-    consumer_task = asyncio.create_task(_consume_utterances(websocket, mcp_client, session_id, utterance_queue))
+    turn_state = _TurnState()
+    consumer_task = asyncio.create_task(
+        _consume_utterances(websocket, mcp_client, session_id, utterance_queue, turn_state)
+    )
 
     try:
         while True:
@@ -68,6 +82,19 @@ async def handle_stream(websocket: WebSocket, mcp_client: MCPClient, session_id:
                     )
                     continue
                 utterance_pcm = endpointer.accept_frame(frame)
+                if endpointer.speech_confirmed and not was_speech_confirmed:
+                    # Milestone 3.2 (barge-in): tell the client speech has
+                    # started well before the utterance finishes, so it can
+                    # stop any reply audio it's playing right away instead
+                    # of waiting for a full "turn" round trip. Gated on
+                    # speech_confirmed rather than the raw in_speech flag —
+                    # in_speech alone flips true after ~90ms, which is too
+                    # trigger-happy for this: a false positive here means
+                    # wrongly cutting off audio that's actively playing
+                    # (e.g. from acoustic echo of that same audio hitting
+                    # the mic), not just discarding an empty buffer later.
+                    await websocket.send_json({"type": "speech_started"})
+                was_speech_confirmed = endpointer.speech_confirmed
                 if utterance_pcm is not None:
                     utterance_queue.put_nowait(utterance_pcm)
                 continue
@@ -88,6 +115,18 @@ async def handle_stream(websocket: WebSocket, mcp_client: MCPClient, session_id:
                     utterance_pcm = endpointer.force_finalize()
                     if utterance_pcm is not None:
                         utterance_queue.put_nowait(utterance_pcm)
+                elif msg_type == "barge_in":
+                    # The client sends this the moment it hears speech_started
+                    # while a reply is playing (or still being generated).
+                    # Drop anything still queued — it's stale now that the
+                    # user is talking again — and cancel the turn actually
+                    # running, if any. If nothing's running (the previous
+                    # turn already finished and only its audio was playing),
+                    # this is a no-op; stopping that audio is client-side.
+                    while not utterance_queue.empty():
+                        utterance_queue.get_nowait()
+                    if turn_state.current_task is not None and not turn_state.current_task.done():
+                        turn_state.current_task.cancel()
     except WebSocketDisconnect:
         pass
     finally:
@@ -99,13 +138,26 @@ async def handle_stream(websocket: WebSocket, mcp_client: MCPClient, session_id:
 
 
 async def _consume_utterances(
-    websocket: WebSocket, mcp_client: MCPClient, session_id: str, queue: asyncio.Queue[bytes]
+    websocket: WebSocket, mcp_client: MCPClient, session_id: str, queue: asyncio.Queue[bytes], turn_state: _TurnState
 ) -> None:
     """Process finalized utterances one at a time, in order, off the main
-    receive loop (see handle_stream's comment for why this is separate)."""
+    receive loop (see handle_stream's comment for why this is separate).
+    Each turn runs as its own task, rather than a bare await, so a
+    "barge_in" message can cancel just that task without killing this loop —
+    cancelling doesn't stop a blocking call already handed to a thread (see
+    _run_turn's asyncio.to_thread calls), only our own wait on its result.
+    """
     while True:
         utterance_pcm = await queue.get()
-        await _process_utterance(websocket, mcp_client, session_id, utterance_pcm)
+        turn_state.current_task = asyncio.create_task(
+            _process_utterance(websocket, mcp_client, session_id, utterance_pcm)
+        )
+        try:
+            await turn_state.current_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            turn_state.current_task = None
 
 
 async def _process_utterance(

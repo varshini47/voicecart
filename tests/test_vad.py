@@ -40,6 +40,57 @@ def _feed(endpointer: Endpointer, n: int) -> bytes | None:
     return result
 
 
+def test_in_speech_flips_true_exactly_at_start_speech_frames() -> None:
+    endpointer = Endpointer(vad=FakeVad([True] * START_SPEECH_FRAMES))
+
+    for _ in range(START_SPEECH_FRAMES - 1):
+        assert endpointer.in_speech is False
+        endpointer.accept_frame(FRAME)
+
+    assert endpointer.in_speech is False
+    endpointer.accept_frame(FRAME)
+    assert endpointer.in_speech is True
+
+
+def test_speech_confirmed_lags_in_speech_until_min_speech_frames() -> None:
+    endpointer = Endpointer(vad=FakeVad([True] * MIN_SPEECH_FRAMES))
+
+    for _ in range(START_SPEECH_FRAMES):
+        endpointer.accept_frame(FRAME)
+    assert endpointer.in_speech is True
+    assert endpointer.speech_confirmed is False  # in_speech, but not enough yet
+
+    for _ in range(MIN_SPEECH_FRAMES - START_SPEECH_FRAMES - 1):
+        endpointer.accept_frame(FRAME)
+        assert endpointer.speech_confirmed is False
+
+    endpointer.accept_frame(FRAME)
+    assert endpointer.speech_confirmed is True
+
+
+def test_speech_confirmed_never_true_for_a_brief_noise_blip() -> None:
+    # Same pattern as test_noise_blip_that_auto_finalizes_is_discarded:
+    # long enough to flip in_speech, too short to ever be trusted.
+    pattern = [True] * START_SPEECH_FRAMES + [False] * END_SILENCE_FRAMES
+    endpointer = Endpointer(vad=FakeVad(pattern))
+
+    for _ in range(len(pattern)):
+        endpointer.accept_frame(FRAME)
+        assert endpointer.speech_confirmed is False
+
+
+def test_in_speech_goes_false_again_after_finalization() -> None:
+    pattern = [True] * SPEECH_FRAMES + [False] * END_SILENCE_FRAMES
+    endpointer = Endpointer(vad=FakeVad(pattern))
+
+    for _ in range(len(pattern) - 1):
+        endpointer.accept_frame(FRAME)
+    assert endpointer.in_speech is True
+
+    endpointer.accept_frame(FRAME)  # finalizes
+    assert endpointer.in_speech is False
+
+
 def test_leading_silence_is_dropped_and_never_finalizes() -> None:
     endpointer = Endpointer(vad=FakeVad([False] * 50))
 
