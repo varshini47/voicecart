@@ -1,12 +1,5 @@
-faster-whisper
-piper-tts
 python-dotenv
 requests
 fastapi
 uvicorn[standard]
-python-multipart
-pytest
-pytest-asyncio
 mcp==1.28.1  # pinned: 2.0.0 moved/removed mcp.server.fastmcp, breaking mcp_commerce/server.py
-pyyaml
-webrtcvad-wheels

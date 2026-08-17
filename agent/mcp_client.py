@@ -11,6 +11,7 @@ so the MCP server's schemas stay the single source of truth (per CLAUDE.md:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from contextlib import AsyncExitStack
 from typing import Any
@@ -59,7 +60,17 @@ class MCPClient:
         self.tools_requiring_session: set[str] = set()
 
     async def connect(self) -> None:
-        params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_commerce.server"])
+        # env=os.environ (default None) matters: the MCP SDK's stdio_client
+        # does NOT inherit the parent process's environment by default — it
+        # only passes a minimal safelist (PATH, TEMP, etc., see
+        # mcp.client.stdio.get_default_environment), deliberately excluding
+        # arbitrary app secrets. Without this, mcp_commerce.server's own
+        # SHOPIFY_*/LLM_* env lookups fail — this went unnoticed locally
+        # because the subprocess's own load_dotenv() call happened to find
+        # a real .env file on disk in every dev environment so far; it broke
+        # the moment that assumption stopped holding (a Docker image with no
+        # .env file, Milestone 4.1's real docker-build verification).
+        params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_commerce.server"], env=dict(os.environ))
         read, write = await self._exit_stack.enter_async_context(stdio_client(params))
         self.session = await self._exit_stack.enter_async_context(ClientSession(read, write))
         await self.session.initialize()

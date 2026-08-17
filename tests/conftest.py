@@ -48,3 +48,19 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(main.mcp_client, "close", noop)
     with TestClient(main.app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def text_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    # Same reasoning as `client`, but for the voice-free deploy entrypoint
+    # (agent/main_text.py) — its own separate MCPClient instance, same noop
+    # lifespan trick.
+    from agent import main_text
+
+    async def noop(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(main_text.mcp_client, "connect", noop)
+    monkeypatch.setattr(main_text.mcp_client, "close", noop)
+    with TestClient(main_text.app) as test_client:
+        yield test_client
