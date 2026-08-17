@@ -82,7 +82,7 @@ voicecart/
 
 - [x] Week 1: turn-based voice pipeline (record → STT → LLM echo agent → TTS)
 - [x] Week 2: MCP commerce server + tool-calling agent + evals v1
-- [ ] Week 3: streaming STT, barge-in/interruptions, Hinglish scenarios
+- [x] Week 3: streaming STT, barge-in/interruptions, Hinglish scenarios
 - [ ] Week 4: Docker, AWS deploy (text-mode API), GitHub Actions CI/CD, demo video, README with architecture diagram
 
 Update these checkboxes as milestones complete.
