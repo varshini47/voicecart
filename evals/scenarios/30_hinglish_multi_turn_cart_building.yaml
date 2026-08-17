@@ -1,0 +1,13 @@
+name: hinglish_multi_turn_cart_building
+description: Cart should accumulate correctly across many separate Hinglish turns.
+turns:
+  - user: "Ek Tata Salt add karo mere cart mein."
+  - user: "Ek India Gate Basmati Rice bhi daal do."
+  - user: "Ek Colgate Toothpaste bhi add kar do."
+expected_final_cart:
+  - title: "Tata Salt 1kg"
+    quantity: 1
+  - title: "India Gate Basmati Rice 1kg"
+    quantity: 1
+  - title: "Colgate Toothpaste 100g"
+    quantity: 1

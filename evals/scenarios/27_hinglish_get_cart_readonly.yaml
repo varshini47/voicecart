@@ -1,0 +1,11 @@
+name: hinglish_get_cart_readonly
+description: Asking what's in the cart in Hinglish is read-only and needs no confirmation or clarification.
+turns:
+  - user: "Ek Colgate Toothpaste add kar do."
+  - user: "Mera cart mein kya hai, batao."
+    expect_tools: [get_cart]
+    forbid_tools: [add_to_cart, remove_from_cart, checkout]
+    expect_clarification: false
+expected_final_cart:
+  - title: "Colgate Toothpaste 100g"
+    quantity: 1

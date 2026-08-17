@@ -1,0 +1,10 @@
+name: hinglish_remove_without_respecifying_brand
+description: >
+  Session memory in Hinglish - removing "doodh" shouldn't require re-specifying
+  the brand already established earlier in the conversation.
+turns:
+  - user: "Ek Amul doodh add karo mere cart mein."
+  - user: "Doodh cart se hata do."
+    expect_tools: [remove_from_cart]
+    expect_clarification: false
+expected_final_cart: []

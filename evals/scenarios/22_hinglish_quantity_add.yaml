@@ -1,0 +1,9 @@
+name: hinglish_quantity_add
+description: A Hindi quantity word ("do" = two) attached to an unambiguous item should map to the correct integer quantity.
+turns:
+  - user: "Do packet Maggi add kar do cart mein."
+    expect_tools: [search_products, add_to_cart]
+    expect_clarification: false
+expected_final_cart:
+  - title: "Maggi 2-Minute Noodles 70g"
+    quantity: 2

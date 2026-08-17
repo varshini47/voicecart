@@ -1,0 +1,10 @@
+name: hinglish_multi_item_single_turn
+description: Two unambiguous items requested in one Hinglish sentence should both get searched and added.
+turns:
+  - user: "Mujhe ek Tata Salt aur do Maggi chahiye, dono cart mein add kar do."
+    expect_tools: [search_products, add_to_cart]
+expected_final_cart:
+  - title: "Tata Salt 1kg"
+    quantity: 1
+  - title: "Maggi 2-Minute Noodles 70g"
+    quantity: 2

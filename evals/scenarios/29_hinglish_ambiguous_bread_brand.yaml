@@ -1,0 +1,14 @@
+name: hinglish_ambiguous_bread_brand
+description: >
+  "Bread" matches multiple brands - the agent must ask which one instead of
+  guessing, same as the English version.
+turns:
+  - user: "Bread add karo cart mein."
+    expect_tools: [search_products]
+    forbid_tools: [add_to_cart]
+    expect_clarification: true
+  - user: "Modern wala le lo."
+    expect_tools: [add_to_cart]
+expected_final_cart:
+  - title: "Modern White Bread 400g"
+    quantity: 1

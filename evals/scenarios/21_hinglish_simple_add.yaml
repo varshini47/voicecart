@@ -1,0 +1,10 @@
+name: hinglish_simple_add
+description: A single unambiguous item in Hinglish should be searched and added without any clarification.
+turns:
+  - user: "Ek Tata Salt mere cart mein add kar do."
+    expect_tools: [search_products, add_to_cart]
+    forbid_tools: [checkout]
+    expect_clarification: false
+expected_final_cart:
+  - title: "Tata Salt 1kg"
+    quantity: 1

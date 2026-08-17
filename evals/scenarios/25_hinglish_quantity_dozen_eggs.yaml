@@ -1,0 +1,10 @@
+name: hinglish_quantity_dozen_eggs
+description: >
+  "Ek dozen" (a dozen) eggs should map to 2 units of the 6-pack tray, same
+  conversion as the English version.
+turns:
+  - user: "Ek dozen ande add kar do."
+    expect_tools: [search_products, add_to_cart]
+expected_final_cart:
+  - title: "Eggs 6pc Tray"
+    quantity: 2
