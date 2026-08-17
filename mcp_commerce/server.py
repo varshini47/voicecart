@@ -97,7 +97,9 @@ def checkout(session: str, confirm: bool = False) -> CheckoutResult:
     """Finalize the session's cart and return a checkout link.
 
     Requires confirm=true. The agent must get explicit user confirmation
-    before ever calling this with confirm=true (see CLAUDE.md).
+    before ever calling this with confirm=true (see CLAUDE.md). The buyer
+    enters their own email and shipping address on Shopify's checkout page
+    itself — this tool doesn't collect either in conversation.
     """
     if not confirm:
         return CheckoutResult(

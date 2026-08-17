@@ -8,6 +8,7 @@ loop forever within a single request.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from agent import llm, session
@@ -19,7 +20,9 @@ FALLBACK_REPLY = "Sorry, I'm having trouble completing that. Could you try again
 
 SYSTEM_PROMPT = (
     "You are VoiceCart, a voice-based grocery shopping assistant. Keep replies "
-    "short and conversational, since they will be spoken aloud.\n\n"
+    "short and conversational, since they will be spoken aloud. Never use "
+    "markdown formatting (no **, *, #, -, or numbered lists) — a TTS engine "
+    "reads your reply literally, so write plain prose only.\n\n"
     "You have tools to search the catalog and manage the user's cart. Always "
     "use search_products to find a product's product_id before adding it to "
     "the cart — never guess a product_id.\n\n"
@@ -45,6 +48,13 @@ SYSTEM_PROMPT = (
     "not confirmation. Always get_cart first, read back the cart and total "
     "(or say it's empty), and wait for an explicit yes. get_cart and "
     "search_products are read-only and never need confirmation.\n\n"
+    "checkout only ever returns a link to Shopify's real checkout page — it "
+    "never places an order or takes payment itself. When it succeeds, never "
+    "say the order is \"confirmed\" or \"placed\" — say something like "
+    "\"I've got your order ready — open this link to complete payment: ...\", "
+    "making clear the link is the next step, not a finished purchase. The "
+    "buyer enters their own email, shipping address, and payment on "
+    "Shopify's checkout page itself — don't ask for any of that here.\n\n"
     "If a tool call returns an error, you may retry once with corrected "
     "arguments if you can identify the fix. If it fails again, or you can't "
     "identify a fix, explain the problem to the user in plain, non-technical "
@@ -60,7 +70,14 @@ async def run_turn(session_id: str, user_text: str, mcp_client: MCPClient) -> st
     reply_text = FALLBACK_REPLY
 
     for _ in range(MAX_TOOL_ROUNDS):
-        assistant_message = llm.chat_completion(messages, tools=mcp_client.tool_schemas)
+        # llm.chat_completion is a blocking `requests` call (plus, on retry,
+        # blocking time.sleep backoff) — offload it to a thread so it doesn't
+        # freeze the event loop. That matters a lot for /converse/stream:
+        # while the loop is blocked, uvicorn can't send WebSocket keepalive
+        # pings, and a slow/retried LLM call (seen taking 10s+ with retries)
+        # can get the connection killed by ping-timeout before the reply
+        # ever goes out.
+        assistant_message = await asyncio.to_thread(llm.chat_completion, messages, tools=mcp_client.tool_schemas)
         messages.append(assistant_message)
         turn_messages.append(assistant_message)
 

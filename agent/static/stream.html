@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VoiceCart — streaming demo (Week 3)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 3rem auto; padding: 0 1rem; }
+  button { font-size: 1.1rem; padding: 0.6rem 1.2rem; cursor: pointer; }
+  #status { color: #666; margin-top: 0.75rem; }
+  .turn { margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+  <h1>VoiceCart — streaming</h1>
+  <p>Click start, then talk. Click "Done talking" after each question to get a reply right away — the server also auto-detects a long pause, but don't rely on that. Click stop when you're done for good.</p>
+  <button id="toggle">Start streaming</button>
+  <button id="finalize" disabled>Done talking</button>
+  <div id="status"></div>
+  <div id="conversation"></div>
+  <audio id="reply-audio" controls hidden></audio>
+
+<script>
+const TARGET_SAMPLE_RATE = 16000;
+const FRAME_SAMPLES = 480; // 30ms @ 16kHz, matches voice/vad.py's FRAME_BYTES
+
+const toggleButton = document.getElementById("toggle");
+const finalizeButton = document.getElementById("finalize");
+const statusEl = document.getElementById("status");
+const conversationEl = document.getElementById("conversation");
+const replyAudioEl = document.getElementById("reply-audio");
+
+let ws = null;
+let audioContext = null;
+let sourceNode = null;
+let processorNode = null;
+let silentSink = null;
+let pcmBuffer = new Int16Array(0); // leftover 16kHz samples not yet forming a full frame
+let manualStop = false;
+
+function downsampleToInt16(float32Input, inputSampleRate) {
+  const ratio = inputSampleRate / TARGET_SAMPLE_RATE;
+  const outLength = Math.floor(float32Input.length / ratio);
+  const out = new Int16Array(outLength);
+  // Average each input block instead of picking one sample per step — a
+  // naive nearest-sample pick aliases badly (high frequencies fold into
+  // garbage), which was corrupting speech enough to break transcription.
+  for (let i = 0; i < outLength; i++) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(float32Input.length, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    let count = 0;
+    for (let j = start; j < end; j++) {
+      sum += float32Input[j];
+      count++;
+    }
+    const s = count > 0 ? sum / count : 0;
+    out[i] = Math.max(-32768, Math.min(32767, Math.round(s * 32768)));
+  }
+  return out;
+}
+
+function sendFrames(newSamples) {
+  const combined = new Int16Array(pcmBuffer.length + newSamples.length);
+  combined.set(pcmBuffer);
+  combined.set(newSamples, pcmBuffer.length);
+
+  let offset = 0;
+  while (combined.length - offset >= FRAME_SAMPLES) {
+    const frame = combined.slice(offset, offset + FRAME_SAMPLES);
+    ws.send(frame.buffer);
+    offset += FRAME_SAMPLES;
+  }
+  pcmBuffer = combined.slice(offset);
+}
+
+function addTurn(speaker, text) {
+  const p = document.createElement("p");
+  p.innerHTML = `<strong>${speaker}:</strong> `;
+  p.append(text);
+  conversationEl.appendChild(p);
+}
+
+async function startStreaming() {
+  manualStop = false;
+  const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${wsProtocol}//${location.host}/converse/stream`);
+  ws.binaryType = "arraybuffer";
+
+  ws.onmessage = async (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === "ready") {
+        statusEl.textContent = "Listening...";
+      } else if (data.type === "turn") {
+        addTurn("You", data.transcript || "(empty)");
+        addTurn("VoiceCart", data.reply_text);
+        replyAudioEl.src = `data:audio/wav;base64,${data.reply_audio_base64}`;
+        replyAudioEl.hidden = false;
+        statusEl.textContent = "Reply received — listening again...";
+        try {
+          await replyAudioEl.play();
+        } catch (playErr) {
+          // Browser autoplay policy can block programmatic play() outside a
+          // user-gesture call stack; the reply is still on the page (text +
+          // a visible audio control) even if it doesn't play automatically.
+          statusEl.textContent = "Reply received (click the audio player below to hear it — autoplay was blocked).";
+        }
+      } else if (data.type === "error") {
+        statusEl.textContent = `Error: ${data.detail}`;
+      }
+    } catch (err) {
+      // Surface client-side failures directly on the page — there's no
+      // guarantee whoever's testing this has devtools open.
+      statusEl.textContent = `Client error handling server message: ${err.message}`;
+    }
+  };
+
+  ws.onclose = (event) => {
+    if (manualStop) return;
+    statusEl.textContent = `Disconnected unexpectedly (code ${event.code}). Click "Start streaming" to reconnect.`;
+    ws = null;
+    toggleButton.textContent = "Start streaming";
+    finalizeButton.disabled = true;
+  };
+
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    ws.onerror = reject;
+  });
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioContext = new AudioContext();
+  sourceNode = audioContext.createMediaStreamSource(stream);
+
+  // ScriptProcessorNode is deprecated in favor of AudioWorklet, but needs no
+  // separate module file to load — kept for demo simplicity. AudioWorklet
+  // would be the production-correct replacement.
+  processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+  processorNode.onaudioprocess = (event) => {
+    const input = event.inputBuffer.getChannelData(0);
+    sendFrames(downsampleToInt16(input, audioContext.sampleRate));
+  };
+
+  // onaudioprocess only fires once the node graph reaches the destination;
+  // route through a zero-gain node so we don't also play the mic back to
+  // the speakers (feedback).
+  silentSink = audioContext.createGain();
+  silentSink.gain.value = 0;
+  sourceNode.connect(processorNode);
+  processorNode.connect(silentSink);
+  silentSink.connect(audioContext.destination);
+
+  statusEl.textContent = "Listening...";
+  finalizeButton.disabled = false;
+}
+
+function stopStreaming() {
+  manualStop = true;
+  if (ws) {
+    try { ws.send(JSON.stringify({ type: "stop" })); } catch (err) { /* already closed */ }
+    ws.close();
+    ws = null;
+  }
+  if (processorNode) { processorNode.disconnect(); processorNode = null; }
+  if (silentSink) { silentSink.disconnect(); silentSink = null; }
+  if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+  if (audioContext) { audioContext.close(); audioContext = null; }
+  pcmBuffer = new Int16Array(0);
+  finalizeButton.disabled = true;
+  statusEl.textContent = "Stopped.";
+}
+
+toggleButton.addEventListener("click", async () => {
+  if (ws) {
+    stopStreaming();
+    toggleButton.textContent = "Start streaming";
+    return;
+  }
+  try {
+    await startStreaming();
+    toggleButton.textContent = "Stop streaming";
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+});
+
+finalizeButton.addEventListener("click", () => {
+  if (!ws) return;
+  ws.send(JSON.stringify({ type: "finalize" }));
+  statusEl.textContent = "Processing what you said...";
+});
+</script>
+</body>
+</html>

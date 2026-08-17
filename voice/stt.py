@@ -15,6 +15,16 @@ from faster_whisper import WhisperModel
 
 _model: WhisperModel | None = None
 
+NO_SPEECH_PROB_THRESHOLD = 0.6
+# faster-whisper's per-segment estimate of "this segment isn't speech at
+# all". voice/vad.py's MIN_SPEECH_FRAMES already filters short noise blips
+# by duration, but sustained non-speech noise (a cough, a mic bump,
+# background chatter) can pass that frame-level check while still being
+# acoustically not-speech — Whisper then hallucinates plausible-looking
+# text on it (a stray word, or oddly, phonetic-looking gibberish). Dropping
+# high-no_speech_prob segments catches that case using Whisper's own
+# confidence signal instead of guessing from duration alone.
+
 
 def _get_model() -> WhisperModel:
     global _model
@@ -26,8 +36,11 @@ def _get_model() -> WhisperModel:
 def transcribe(audio_bytes: bytes) -> tuple[str, str]:
     """Transcribe audio bytes (any ffmpeg/PyAV-decodable format) to text.
 
-    Returns (text, detected_language).
+    Returns (text, detected_language). A segment Whisper itself flags as
+    likely non-speech is dropped rather than included in the transcript.
     """
     segments, info = _get_model().transcribe(io.BytesIO(audio_bytes))
-    text = " ".join(segment.text.strip() for segment in segments)
+    text = " ".join(
+        segment.text.strip() for segment in segments if segment.no_speech_prob < NO_SPEECH_PROB_THRESHOLD
+    )
     return text, info.language

@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, UploadFile
+from fastapi import FastAPI, Form, UploadFile, WebSocket
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -23,6 +23,7 @@ load_dotenv()
 
 from agent import agent_loop, session
 from agent.mcp_client import MCPClient
+from agent.ws_stream import handle_stream
 from voice import stt, tts
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -54,6 +55,16 @@ class ConverseResponse(BaseModel):
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/stream")
+def stream_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "stream.html")
+
+
+@app.websocket("/converse/stream")
+async def converse_stream(websocket: WebSocket, session_id: str | None = None) -> None:
+    await handle_stream(websocket, mcp_client, session_id)
 
 
 @app.post("/converse", response_model=ConverseResponse)

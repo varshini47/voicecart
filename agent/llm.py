@@ -19,6 +19,10 @@ import time
 import requests
 
 MAX_RETRIES = 5
+MAX_RETRY_DELAY_SECONDS = 15  # cap any single retry wait; if Groq's own
+# Retry-After exceeds this (e.g. the free-tier daily token quota is
+# exhausted, which can mean waiting hours), fail fast with a clear error
+# instead of blocking the user for an unknown, possibly very long time.
 
 
 def chat_completion(messages: list[dict], tools: list[dict] | None = None) -> dict:
@@ -54,8 +58,12 @@ def chat_completion(messages: list[dict], tools: list[dict] | None = None) -> di
             # fall back to exponential backoff.
             retry_after = response.headers.get("retry-after")
             delay = float(retry_after) if retry_after else 2**attempt * 3
-            time.sleep(delay)
-            continue
+            if delay <= MAX_RETRY_DELAY_SECONDS:
+                time.sleep(delay)
+                continue
+            # Groq wants us to wait longer than we're willing to block for —
+            # most likely the free-tier daily quota, not a transient burst.
+            # Fall through to raise_for_status() below instead of retrying.
         if response.status_code == 400 and attempt < MAX_RETRIES - 1:
             # Groq/Llama occasionally emits a malformed non-JSON function-call
             # token (e.g. "<function=name{...}>") instead of a proper
