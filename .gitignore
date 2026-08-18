@@ -5,6 +5,8 @@ __pycache__/
 *.wav
 *.mp3
 *.m4a
+*.mp4
+*.mov
 !demo/**/*.wav
 voice/models/
 .pytest_cache/

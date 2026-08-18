@@ -169,8 +169,12 @@ Fixed 8 pre-existing `ruff` findings surfaced while wiring the lint step (import
 
 **Live-verified on the real GitHub Actions runner (not just locally):** after the owner added `LLM_API_KEY` as a repo secret, all three jobs passed for real on a push to `master` — `lint-and-test` (38s), `build-and-push` (image built and pushed to GHCR, 37s, default `GITHUB_TOKEN` permissions were sufficient with no extra setup needed), and `evals` (13m49s real run against live Groq, **29/30 scenarios passed, 97%** — the sole failure is the already-documented flaky `hinglish_remove_without_respecifying_brand` scenario, not a new bug). `LLM_MODEL`/`LLM_BASE_URL` fall back to the `.env.example` defaults since no repo variables were set for them.
 
-**Milestone 4.4 — Demo + README.**
+**Milestone 4.4 — Demo + README.** README done 2026-08-18; recording still owner's to do.
 2-minute screen recording: voice order end-to-end, order appearing in the Shopify admin, a barge-in moment, one Hinglish command. README with architecture diagram, latency numbers, eval pass rates, and a "design decisions" section.
+
+Built `README.md` (architecture diagram, status table, real latency numbers from Milestone 1.3, the CI-verified 29/30 eval pass rate from Milestone 4.3, a "design decisions" section pulling the most interview-worthy calls from across NOTES.md, run/test/deploy instructions, repo layout, known limitations). Also `demo/DEMO_SCRIPT.md` — a shot-by-shot ~2-minute recording script (voice order → Shopify admin → barge-in → Hinglish) with setup notes, since I can't record the owner's screen/voice myself. Added `*.mp4`/`*.mov` to `.gitignore` so the raw recording doesn't land in git history — link it from the README instead of committing it.
+
+**Still open:** the owner needs to actually record the video following `demo/DEMO_SCRIPT.md`, then link it from the README.
 
 ---
 
