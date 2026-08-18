@@ -160,8 +160,14 @@ Deploy the agent + MCP to a free-tier EC2 instance behind text-mode endpoints (v
 
 **Verified for real, from the actual instance:** `curl localhost:8000/health` → `{"status":"ok"}`; a genuine `POST /converse/text` call ("add milk") correctly triggered a live Groq LLM call, a live Shopify product search, and asked the right clarifying question for the ambiguous brand — full pipeline working end-to-end from AWS's network, not just locally.
 
-**Milestone 4.3 — CI/CD.**
+**Milestone 4.3 — CI/CD.** [x] Done 2026-08-18.
 GitHub Actions: on push → lint, pytest, run evals, report pass rate; on main → build image and deploy. This workflow file is itself interview material.
+
+Built `.github/workflows/ci.yml`, three jobs: (1) `lint-and-test` — ruff + pytest, runs on every push/PR to any branch, no secrets needed, fast and deterministic; (2) `evals` — the live-Groq eval suite, gated to `push` on `master` only (not every push/PR) to avoid burning the free-tier quota on every commit, given the repeated 429s documented in Milestones 2.3/3.3; pass-rate report goes to the job summary, and the job is `continue-on-error: true` since this model's tool-calling has documented non-deterministic flakiness that shouldn't block the build; (3) `build-and-push` — builds `infra/Dockerfile` and pushes to GHCR (`ghcr.io/<owner>/voicecart`) on `master` only. Owner-confirmed scope cut: no auto-deploy to the EC2 box from CI — that stays a manual pull+restart over SSM, since wiring CI to a family member's personal AWS account raises credential/access questions worth deciding deliberately rather than defaulting into.
+
+Fixed 8 pre-existing `ruff` findings surfaced while wiring the lint step (import sorting, an unnecessary import alias, two nested `with` statements collapsed to one, a nested `if` collapsed with `and`, a bare `pytest.raises(Exception)` narrowed to `requests.HTTPError`, and an explicit `check=False` on a `subprocess.run` in a standalone check script) — all real, low-severity, not false positives. Full local test suite (56 tests) and `ruff check .` both clean before committing.
+
+**Requires one manual step the owner needs to do in GitHub repo settings before the `evals` job will work:** add `LLM_API_KEY` as an Actions secret (Settings → Secrets and variables → Actions). `LLM_MODEL`/`LLM_BASE_URL` fall back to the current `.env.example` defaults if not set as repo variables. The `build-and-push` job also needs Settings → Actions → General → Workflow permissions set to "Read and write permissions" for `GITHUB_TOKEN` to be allowed to push to GHCR — not yet confirmed enabled.
 
 **Milestone 4.4 — Demo + README.**
 2-minute screen recording: voice order end-to-end, order appearing in the Shopify admin, a barge-in moment, one Hinglish command. README with architecture diagram, latency numbers, eval pass rates, and a "design decisions" section.

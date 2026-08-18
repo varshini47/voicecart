@@ -15,7 +15,13 @@ load_dotenv()
 
 from mcp_commerce import shopify_client as shopify
 from mcp_commerce.carts import get_or_create_cart_id
-from mcp_commerce.models import CartLine, CartResult, CheckoutResult, Product, SearchProductsResult
+from mcp_commerce.models import (
+    CartLine,
+    CartResult,
+    CheckoutResult,
+    Product,
+    SearchProductsResult,
+)
 
 mcp = FastMCP("commerce-mcp")
 

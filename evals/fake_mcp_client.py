@@ -12,8 +12,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from agent.mcp_client import build_tool_schemas
-from mcp_commerce import carts, server
 from evals import fake_shopify
+from mcp_commerce import carts, server
 
 
 @contextmanager

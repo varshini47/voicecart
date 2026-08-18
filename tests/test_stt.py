@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import voice.stt as stt
+from voice import stt
 
 
 @dataclass

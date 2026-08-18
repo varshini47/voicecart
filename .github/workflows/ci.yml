@@ -1,0 +1,95 @@
+name: CI
+
+# Lint + unit tests run on every push/PR (fast, mocked, no external quota).
+# The live-LLM eval suite and the deploy image build only run on push to
+# master, per CLAUDE.md's evals section and Milestone 4.3 scope discipline
+# around Groq's free-tier quota (see NOTES.md Milestones 2.3/3.3).
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint-and-test:
+    name: Lint + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest
+
+  evals:
+    name: Live-LLM eval suite (master only)
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    # Known non-deterministic flakiness in this Groq model's tool-calling
+    # (see NOTES.md Milestones 2.3/3.3) means a bad pass rate here is worth
+    # surfacing but shouldn't block the build on its own.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run eval suite against live Groq (Shopify mocked)
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-oss-120b' }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.groq.com/openai/v1' }}
+        run: python -m evals.runner | tee eval_report.txt
+
+      - name: Report pass rate
+        if: always()
+        run: |
+          {
+            echo "### Eval pass rate"
+            echo '```'
+            tail -n 40 eval_report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-and-push:
+    name: Build + push deploy image
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/voicecart:latest
+            ghcr.io/${{ github.repository_owner }}/voicecart:${{ github.sha }}

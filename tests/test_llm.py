@@ -9,6 +9,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+import requests
 
 # evals/runner.py monkeypatches agent.llm.chat_completion at import time (a
 # module-level `llm.chat_completion = _throttled_chat_completion`), and
@@ -49,11 +50,10 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_long_retry_after_fails_fast_instead_of_blocking(monkeypatch: pytest.MonkeyPatch) -> None:
     responses = [FakeResponse(429, headers={"retry-after": "3600"})]
 
-    with patch("agent.llm.requests.post", side_effect=responses):
-        with patch("agent.llm.time.sleep") as mock_sleep:
-            with pytest.raises(Exception):
-                chat_completion([{"role": "user", "content": "hi"}])
-            mock_sleep.assert_not_called()
+    with patch("agent.llm.requests.post", side_effect=responses), patch("agent.llm.time.sleep") as mock_sleep:
+        with pytest.raises(requests.HTTPError):
+            chat_completion([{"role": "user", "content": "hi"}])
+        mock_sleep.assert_not_called()
 
 
 def test_short_retry_after_still_retries_and_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -63,9 +63,8 @@ def test_short_retry_after_still_retries_and_succeeds(monkeypatch: pytest.Monkey
         FakeResponse(200, json_body={"choices": [{"message": ok_message}]}),
     ]
 
-    with patch("agent.llm.requests.post", side_effect=responses):
-        with patch("agent.llm.time.sleep") as mock_sleep:
-            result = chat_completion([{"role": "user", "content": "hi"}])
-            mock_sleep.assert_called_once_with(1.0)
+    with patch("agent.llm.requests.post", side_effect=responses), patch("agent.llm.time.sleep") as mock_sleep:
+        result = chat_completion([{"role": "user", "content": "hi"}])
+        mock_sleep.assert_called_once_with(1.0)
 
     assert result == ok_message

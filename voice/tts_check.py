@@ -29,6 +29,7 @@ result = subprocess.run(
     input=TEXT,
     text=True,
     capture_output=True,
+    check=False,
 )
 
 print(result.stdout)

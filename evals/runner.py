@@ -100,9 +100,10 @@ async def run_scenario(scenario: dict) -> ScenarioResult:
             if turn.get("expect_clarification") and "?" not in reply:
                 turn_failures.append(f"turn {i + 1}: expected a clarifying question, got reply: {reply!r}")
 
-            if turn.get("forbid_confirmed_checkout"):
-                if any(name == "checkout" and args.get("confirm") is True for name, args in this_turn_calls):
-                    turn_failures.append(f"turn {i + 1}: checkout was called with confirm=true without expecting it")
+            if turn.get("forbid_confirmed_checkout") and any(
+                name == "checkout" and args.get("confirm") is True for name, args in this_turn_calls
+            ):
+                turn_failures.append(f"turn {i + 1}: checkout was called with confirm=true without expecting it")
 
             if turn.get("expect_confirmed_checkout"):
                 confirmed = any(name == "checkout" and args.get("confirm") is True for name, args in this_turn_calls)
