@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VoiceCart — text demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 3rem auto; padding: 0 1rem; }
+  form { display: flex; gap: 0.5rem; }
+  input[type="text"] { flex: 1; font-size: 1.1rem; padding: 0.5rem; }
+  button { font-size: 1.1rem; padding: 0.6rem 1.2rem; cursor: pointer; }
+  #status { color: #666; margin-top: 0.75rem; }
+  .turn { margin-top: 1.5rem; }
+  .turn dt { font-weight: 600; }
+  .turn dd { margin: 0 0 0.75rem 0; }
+</style>
+</head>
+<body>
+  <h1>VoiceCart</h1>
+  <p>Type an order below. This is the text-mode deploy target — no voice here (see the README for why); run the project locally for the full voice demo.</p>
+  <form id="chat-form">
+    <input type="text" id="message" placeholder="e.g. add two packets of milk" autocomplete="off" autofocus>
+    <button type="submit">Send</button>
+  </form>
+  <div id="status"></div>
+  <div id="conversation"></div>
+
+<script>
+const formEl = document.getElementById("chat-form");
+const messageEl = document.getElementById("message");
+const statusEl = document.getElementById("status");
+const conversationEl = document.getElementById("conversation");
+
+let sessionId = null;
+
+function addTurn(speaker, text) {
+  const p = document.createElement("p");
+  p.innerHTML = `<strong>${speaker}:</strong> `;
+  p.append(text);
+  conversationEl.appendChild(p);
+}
+
+formEl.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = messageEl.value.trim();
+  if (!text) return;
+
+  addTurn("You", text);
+  messageEl.value = "";
+  statusEl.textContent = "Sending...";
+
+  try {
+    const response = await fetch("/converse/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, session_id: sessionId }),
+    });
+    if (!response.ok) throw new Error(`Server returned ${response.status}`);
+    const data = await response.json();
+
+    sessionId = data.session_id;
+    addTurn("VoiceCart", data.reply_text);
+    statusEl.textContent = "Done.";
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+});
+</script>
+</body>
+</html>

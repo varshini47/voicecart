@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 load_dotenv()
@@ -38,6 +40,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="VoiceCart Agent (text mode)", lifespan=lifespan)
 
+STATIC_DIR = Path(__file__).parent / "static"
+
 
 class ConverseTextRequest(BaseModel):
     text: str
@@ -47,6 +51,11 @@ class ConverseTextRequest(BaseModel):
 class ConverseTextResponse(BaseModel):
     session_id: str
     reply_text: str
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "chat.html")
 
 
 @app.post("/converse/text", response_model=ConverseTextResponse)

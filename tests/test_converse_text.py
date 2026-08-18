@@ -41,3 +41,11 @@ def test_health_endpoint(text_client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_index_serves_text_chat_page(text_client: TestClient) -> None:
+    response = text_client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "/converse/text" in response.text
