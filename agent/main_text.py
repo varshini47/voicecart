@@ -61,7 +61,15 @@ def index() -> FileResponse:
 @app.post("/converse/text", response_model=ConverseTextResponse)
 async def converse_text(body: ConverseTextRequest) -> ConverseTextResponse:
     session_id = body.session_id or session.new_session_id()
-    reply_text = await agent_loop.run_turn(session_id, body.text, mcp_client)
+    try:
+        reply_text = await agent_loop.run_turn(session_id, body.text, mcp_client)
+    except Exception:
+        # A failed turn (e.g. the LLM provider erroring out after exhausting
+        # its own retries, per agent/llm.py) shouldn't surface as a bare 500
+        # to a page other people click around in — log it, tell the user in
+        # plain language, per CLAUDE.md's error-recovery requirement.
+        logger.exception("session=%s turn failed", session_id)
+        reply_text = "Something went wrong processing that — please try again in a moment."
     logger.info("session=%s reply_text=%r", session_id, reply_text)
     return ConverseTextResponse(session_id=session_id, reply_text=reply_text)
 

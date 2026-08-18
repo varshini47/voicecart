@@ -5,6 +5,7 @@ structure; agent_loop.run_turn is mocked the same way (see conftest.py).
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import FakePipeline
@@ -49,3 +50,19 @@ def test_index_serves_text_chat_page(text_client: TestClient) -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "/converse/text" in response.text
+
+
+def test_failed_turn_returns_plain_language_reply_not_500(
+    text_client: TestClient, mock_pipeline: FakePipeline, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def failing_run_turn(session_id: str, user_text: str, mcp_client) -> str:
+        raise RuntimeError("simulated LLM provider failure")
+
+    monkeypatch.setattr("agent.main_text.agent_loop.run_turn", failing_run_turn)
+
+    response = text_client.post("/converse/text", json={"text": "add milk"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"]
+    assert "went wrong" in body["reply_text"]
