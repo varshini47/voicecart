@@ -13,14 +13,24 @@ and one Hinglish command.
   speakers can get picked up by the mic and misfire barge-in (see README's
   "known limitations" — this is a documented, honest limitation, not
   something to hide by accident in the one take that matters).
-- Open the Shopify admin (`voicecart-karukcuy.myshopify.com/admin`) in a
-  second tab, on **Sales channels → Orders → Abandoned checkouts** (a
-  `confirm=true` checkout without completed payment shows up there, not
-  under "Orders" — CLAUDE.md's checkout is deliberately test-mode/no-payment,
-  so this is the honest place to show it landed in Shopify for real). If you
-  want a literal completed **Order** instead, walk the returned checkout URL
-  through the dev store's Bogus Gateway test payment method first — no real
-  money, but one extra manual step before recording.
+- **Disable the storefront password gate first**, or the checkout link will
+  just show a password prompt instead of the checkout page: in the Shopify
+  admin, `Online Store → Preferences → Password protection` → uncheck
+  "Restrict access to visitors with the password" (dev stores have this on
+  by default; fine to turn off for a store with no real customers).
+- `mcp_commerce/shopify_client.py` uses Shopify's Cart API — the returned
+  `checkoutUrl` only becomes a real Shopify **checkout** once someone
+  actually opens it, and it only shows up under **Abandoned checkouts** once
+  a customer has entered contact info there and left, which can lag by a
+  while. Don't plan around the admin's Abandoned-checkouts list showing up
+  live on camera. Instead: open the returned checkout URL in a second tab
+  during the recording and show the checkout page itself loading with the
+  correct line items/total — that's still a real Shopify API round-trip,
+  just proven a step earlier and without the timing risk. If you want a
+  literal completed **Order** in the admin, walk that checkout page through
+  the dev store's Bogus Gateway test payment method — no real money, but one
+  extra step to do before recording (not live-clickable, since gateway setup
+  isn't voice-driven).
 - Have one Hinglish line ready to say out loud, e.g. "do packet doodh add
   karo" (matches `evals/scenarios/` Hinglish quantity scenarios).
 
@@ -38,9 +48,10 @@ and one Hinglish command.
    it should read back the cart and ask for confirmation before calling
    checkout. Say *"Yes, confirmed."*
 
-3. **0:40–0:55 — Show it landed in Shopify.** Cut to the admin tab, show the
-   checkout/order with the right line items and quantities. This is the
-   proof it's a real Shopify API call, not a mock.
+3. **0:40–0:55 — Show it landed in Shopify.** Cut to the second tab, open the
+   checkout URL the agent just returned, show it load with the correct line
+   items and total. This is the proof it's a real Shopify API call, not a
+   mock — needs the password gate disabled beforehand (see above).
 
 4. **0:55–1:20 — Barge-in.** Ask something that triggers a longer reply
    (e.g. "what's in my cart right now") and, while it's talking, speak over
