@@ -149,8 +149,16 @@ Built: `agent/main_text.py` — a new, separate FastAPI entrypoint (not a flag o
 
 After both fixes: rebuilt, ran the real container, and confirmed `/health` (200), `/converse/text` actually adding "Tata Salt" to the real Shopify cart end-to-end (live LLM + live Shopify API from inside the container), and correct per-session cart isolation (a fresh `session_id` correctly showed an empty cart). Full local test suite still 56/56 passing after the fix.
 
-**Milestone 4.2 — AWS deploy (text mode).**
+**Milestone 4.2 — AWS deploy (text mode).** [x] Done 2026-08-17.
 Deploy the agent + MCP to a free-tier EC2 instance behind text-mode endpoints (voice runs locally in demos; the cloud instance proves deployment skills without the RAM cost of Whisper). Set the ₹100 billing alarm FIRST.
+
+**Cost-safety setup done first, before any resources:** a **Zero Spend Budget** (AWS Budgets' built-in template, alerts on any charge above $0.00 — tighter than the plan's literal ₹100 threshold) plus Free Tier usage alerts, both set up before touching EC2. Account is a family member's (owner's brother, based in the US) — confirmed this wasn't the same kind of quota-workaround concern as the earlier Groq multi-account question, since sharing a personal AWS account isn't a ToS issue the way circumventing per-account rate limits was.
+
+**Real design correction made mid-setup:** the initial plan was "no public IP at all, access only via SSM" for cost safety. That was wrong and got corrected before acting on it — VoiceCart's own code needs outbound internet to reach Groq and Shopify regardless of how the instance is administered, so a public IPv4 is unavoidable for the app to function (AWS has charged ~$0.005/hour for all public IPv4 addresses, including the default one, since Feb 2024). The actual cost-safety measure: stop the instance whenever not actively in use (both compute and the public-IP charge stop while stopped), with the Zero Spend Budget as a backstop. SSM Session Manager is still used for admin access instead of SSH — no inbound ports open at all, which is a genuine security win even though it's not what makes this cheap.
+
+**Built:** `t3.micro`/`t2.micro` EC2 instance (Amazon Linux 2023, free-tier eligible), an IAM instance role with `AmazonSSMManagedInstanceCore` (lets the pre-installed SSM agent register — this is what Session Manager needs to connect, and the actual root cause of an early "failed to connect" error: the role wasn't attached before first launch). Security group has zero inbound rules. Cloned the repo (pushed to GitHub for this — `d7c73e0`, previously local-only), built the same `infra/Dockerfile` image directly on the instance, ran it bound to `127.0.0.1:8000` only (no public port opened; access is via the SSM terminal itself, not the public internet).
+
+**Verified for real, from the actual instance:** `curl localhost:8000/health` → `{"status":"ok"}`; a genuine `POST /converse/text` call ("add milk") correctly triggered a live Groq LLM call, a live Shopify product search, and asked the right clarifying question for the ambiguous brand — full pipeline working end-to-end from AWS's network, not just locally.
 
 **Milestone 4.3 — CI/CD.**
 GitHub Actions: on push → lint, pytest, run evals, report pass rate; on main → build image and deploy. This workflow file is itself interview material.
