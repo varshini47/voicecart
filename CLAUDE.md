@@ -49,7 +49,7 @@ voicecart/
 
 - **Python 3.11+, FastAPI, uv or pip-tools for deps.** Type hints everywhere; pydantic models for all tool inputs/outputs.
 - **STT:** faster-whisper, `small` model, CPU is fine for turn-based. Language auto-detect on (needed for Hinglish).
-- **TTS:** Piper (local, free). Premium TTS only for the final demo video, if at all.
+- **TTS:** Piper (local, free).
 - **LLM:** provider-agnostic client. Default to a cheap/fast model via env var `LLM_MODEL`; all provider config through env vars, never hardcoded. Must support tool calling.
 - **MCP:** official Python MCP SDK. Tools defined with strict JSON schemas; every tool returns structured results including an `error` field rather than raising into the agent loop.
 - **Shopify:** free development store. Credentials in `.env` (never committed). Storefront API for search/cart, test-mode checkout only.
@@ -83,6 +83,6 @@ voicecart/
 - [x] Week 1: turn-based voice pipeline (record → STT → LLM echo agent → TTS)
 - [x] Week 2: MCP commerce server + tool-calling agent + evals v1
 - [x] Week 3: streaming STT, barge-in/interruptions, Hinglish scenarios
-- [ ] Week 4: Docker, AWS deploy (text-mode API), GitHub Actions CI/CD, demo video, README with architecture diagram
+- [x] Week 4: Docker, AWS deploy (text-mode API), GitHub Actions CI/CD, README with architecture diagram
 
 Update these checkboxes as milestones complete.

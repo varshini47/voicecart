@@ -332,3 +332,14 @@ After both fixes, rebuilt and ran the real container: `/health` returns 200, `PO
 
 **Review:**
 - Be able to explain: why evals are scoped to `master`-only instead of every push (quota, not laziness — cite the specific 429 incidents), why a known-flaky job is `continue-on-error` rather than either hard-failing or being deleted (visibility without crying wolf), why CD stops at "push an image" instead of "deploy," and the distinction between what this session verified (lint+test job, YAML syntax) versus what still needs a real push to confirm (the two `master`-gated jobs, and the GitHub-side secret/permission setup they depend on).
+
+## Week 4 wrap-up — scope change, project complete (2026-09-29)
+
+**Changed (docs only, no code):**
+- **Demo video dropped** by owner decision. Removed video references from `README.md` (milestone table, repo layout), `CLAUDE.md` (TTS note, Week 4 checkbox), and `PLAN.md` (Milestone 4.4). Week 4 checkbox in `CLAUDE.md` is now ticked, so all four weeks are complete.
+- `demo/DEMO_SCRIPT.md` rewritten from a video-recording shot list into a live-demo walkthrough. This also fixed a leftover contradiction: commit `ed1027e` said the dev-store password gate can't be disabled, but its text still told you to disable it. The script now says to enter the storefront password instead.
+- **Resume bullet corrected** in `PLAN.md`: it claimed "automated AWS deployment," which isn't true. CI publishes the Docker image to GHCR, and deploying to EC2 is manual.
+- README's "CD stops at GHCR" design decision now gives both reasons: **cost** (the instance is stopped when not being tested, so auto-deploy would fail most of the time) and **access** (auto-deploy would need credentials for a family member's personal AWS account stored as CI secrets).
+
+**Review:**
+- Be able to explain the CI/CD boundary in one breath: "CI is automated through to a published image. Deploy is manual because the demo box runs on demand to keep costs at zero, and I didn't want personal-account cloud credentials in CI. For a team, I'd add an OIDC-based deploy job with a narrowly scoped IAM role."

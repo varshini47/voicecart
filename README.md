@@ -49,7 +49,7 @@ schemas and structured `error` fields instead of exceptions — so the backend
 | 4.1 | Docker (text-mode deploy image) | ✅ |
 | 4.2 | AWS EC2 deploy (text-mode, SSM-only access) | ✅ |
 | 4.3 | GitHub Actions CI/CD (lint, tests, evals, image build+push) | ✅ |
-| 4.4 | Demo video + this README | ✅ |
+| 4.4 | This README + live demo script | ✅ |
 
 ## Latency (turn-based, CPU, warm)
 
@@ -119,9 +119,15 @@ the real bugs behind each one are in NOTES.md.
   live-LLM scenarios on every push would make that worse for no benefit. The
   job still reports its pass rate to the run summary either way.
 - **CD stops at pushing a Docker image to GHCR, not auto-deploying to EC2.**
-  The EC2 box is a family member's personal AWS account with no CI
-  credentials configured — wiring that up is a deliberate access-control
-  decision to make separately, not something to default into silently.
+  Two reasons. Cost: the EC2 instance is stopped whenever it isn't being
+  tested (compute and the public-IPv4 charge only bill while it runs), so an
+  auto-deploy step would fail most of the time anyway. Access: the box is on
+  a family member's personal AWS account, and auto-deploy would mean storing
+  credentials for that account as CI secrets — a deliberate access-control
+  decision, not something to default into. Deploying is a manual step: start
+  the instance, `docker pull` + restart over SSM, stop it when done. For a
+  team setup, the next step would be a deploy job using GitHub OIDC with a
+  narrowly scoped IAM role (no long-lived keys).
 
 ## Running it locally
 
@@ -171,7 +177,7 @@ voice/            STT (faster-whisper) + TTS (Piper) + VAD wrappers
 evals/            YAML eval scenarios + runner (fake Shopify, real agent loop)
 tests/            pytest unit + integration tests
 infra/            Dockerfile, docker-compose.yml
-demo/             Shopify seed script, demo recording script
+demo/             Shopify seed script, live demo script
 .github/workflows/ CI/CD
 ```
 

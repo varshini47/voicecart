@@ -1,46 +1,41 @@
-# Demo recording script (Milestone 4.4)
+# Live demo walkthrough
 
-Target: ~2 minutes. Covers everything CLAUDE.md/PLAN.md ask for: a voice
-order end-to-end, the order showing up in Shopify admin, a barge-in moment,
-and one Hinglish command.
+A ~2-minute live walkthrough, e.g. for showing the project in an interview:
+a voice order end-to-end, the order reaching Shopify, a barge-in moment, and
+one Hinglish command.
 
-## Before you hit record
+## Setup
 
 - Run the streaming server with the longer keepalive:
   `uvicorn agent.main:app --reload --ws-ping-interval 20 --ws-ping-timeout 90`
-- Open `http://127.0.0.1:8000/stream` in the browser you'll record.
+- Open `http://127.0.0.1:8000/stream` in the browser.
 - **Wear headphones.** Without them, the TTS reply playing through your
   speakers can get picked up by the mic and misfire barge-in (see README's
-  "known limitations" — this is a documented, honest limitation, not
-  something to hide by accident in the one take that matters).
-- **Disable the storefront password gate first**, or the checkout link will
-  just show a password prompt instead of the checkout page: in the Shopify
-  admin, `Online Store → Preferences → Password protection` → uncheck
-  "Restrict access to visitors with the password" (dev stores have this on
-  by default; fine to turn off for a store with no real customers).
+  "known limitations").
+- **The storefront password gate can't be disabled on a dev store**, so the
+  checkout link will show a password prompt first — have the storefront
+  password handy (Shopify admin → `Online Store → Preferences`) and enter it
+  once in the second tab before the demo.
 - `mcp_commerce/shopify_client.py` uses Shopify's Cart API — the returned
   `checkoutUrl` only becomes a real Shopify **checkout** once someone
   actually opens it, and it only shows up under **Abandoned checkouts** once
-  a customer has entered contact info there and left, which can lag by a
-  while. Don't plan around the admin's Abandoned-checkouts list showing up
-  live on camera. Instead: open the returned checkout URL in a second tab
-  during the recording and show the checkout page itself loading with the
-  correct line items/total — that's still a real Shopify API round-trip,
-  just proven a step earlier and without the timing risk. If you want a
-  literal completed **Order** in the admin, walk that checkout page through
-  the dev store's Bogus Gateway test payment method — no real money, but one
-  extra step to do before recording (not live-clickable, since gateway setup
-  isn't voice-driven).
-- Have one Hinglish line ready to say out loud, e.g. "do packet doodh add
-  karo" (matches `evals/scenarios/` Hinglish quantity scenarios).
+  a customer has entered contact info there and left, which can lag. Don't
+  rely on the admin's Abandoned-checkouts list live. Instead: open the
+  returned checkout URL in a second tab and show the checkout page loading
+  with the correct line items/total — that's still a real Shopify API
+  round-trip. If you want a literal completed **Order** in the admin, walk
+  that checkout page through the dev store's Bogus Gateway test payment
+  method (no real money).
+- Have one Hinglish line ready, e.g. "do packet doodh add karo" (matches
+  `evals/scenarios/` Hinglish quantity scenarios).
 
-## Shot list (~2 min)
+## Flow (~2 min)
 
-1. **0:00–0:10 — One-line framing.** "This is VoiceCart — I speak, it
-   transcribes, an LLM agent calls real Shopify commerce tools, and it talks
-   back." (Optionally show the architecture diagram from README.md for 2-3s.)
+1. **One-line framing.** "This is VoiceCart — I speak, it transcribes, an
+   LLM agent calls real Shopify commerce tools over MCP, and it talks back."
+   (Optionally show the architecture diagram from README.md.)
 
-2. **0:10–0:40 — Voice order, end-to-end.** Click "Start streaming," say:
+2. **Voice order, end-to-end.** Click "Start streaming," say:
    *"Add two packets of milk and a loaf of bread."*
    Let it ask its brand-clarification question (milk has 3 brands on
    purpose — this is the ambiguity-handling behavior worth showing, not a
@@ -48,29 +43,18 @@ and one Hinglish command.
    it should read back the cart and ask for confirmation before calling
    checkout. Say *"Yes, confirmed."*
 
-3. **0:40–0:55 — Show it landed in Shopify.** Cut to the second tab, open the
+3. **Show it landed in Shopify.** Switch to the second tab, open the
    checkout URL the agent just returned, show it load with the correct line
-   items and total. This is the proof it's a real Shopify API call, not a
-   mock — needs the password gate disabled beforehand (see above).
+   items and total — proof it's a real Shopify API call, not a mock.
 
-4. **0:55–1:20 — Barge-in.** Ask something that triggers a longer reply
-   (e.g. "what's in my cart right now") and, while it's talking, speak over
-   it with a new request (e.g. "actually, remove the bread"). Show playback
-   stopping and the new request being handled instead of queued behind the
-   old one.
+4. **Barge-in.** Ask something that triggers a longer reply (e.g. "what's in
+   my cart right now") and, while it's talking, speak over it with a new
+   request (e.g. "actually, remove the bread"). Show playback stopping and
+   the new request being handled instead of queued behind the old one.
 
-5. **1:20–1:45 — Hinglish.** Say the prepared line, e.g. *"do packet doodh
-   add karo"* — show it correctly resolving quantity 2, not defaulting to 1
-   (this exact failure mode was a real bug, fixed in Milestone 3.3 — worth
-   mentioning in voiceover if there's time).
+5. **Hinglish.** Say the prepared line, e.g. *"do packet doodh add karo"* —
+   show it correctly resolving quantity 2, not defaulting to 1 (this exact
+   failure mode was a real bug, fixed in Milestone 3.3 — worth mentioning).
 
-6. **1:45–2:00 — Close.** One line on what's under the hood: "30-scenario
-   eval suite, Dockerized, deployed to AWS, CI on every push" — whatever's
-   true and shortest.
-
-## After recording
-
-`.gitignore` already excludes `*.mp4`/`*.mov`, so saving the raw recording
-under `demo/` won't accidentally land it in git history. For a file this
-size, upload it to YouTube/Drive/similar and link it from the README instead
-of trying to force-add it to the repo.
+6. **Close.** One line on what's under the hood: "30-scenario eval suite,
+   Dockerized, deployed to AWS, CI on every push."
