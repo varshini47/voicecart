@@ -19,7 +19,8 @@ Mic (browser)
 VAD end-pointing (webrtcvad)  ──  detects utterance boundaries, drives barge-in
    │  finalized utterance
    ▼
-STT (faster-whisper, small, local, language auto-detect)
+STT (faster-whisper small, local, language auto-detect;
+     Groq-hosted whisper-large-v3 on the Render demo — STT_BACKEND)
    │  transcript
    ▼
 Agent loop (FastAPI)  ──  LLM decides: reply / call a tool / ask a clarifying question
@@ -50,6 +51,7 @@ schemas and structured `error` fields instead of exceptions — so the backend
 | 4.2 | AWS EC2 deploy (text-mode, SSM-only access) | ✅ |
 | 4.3 | GitHub Actions CI/CD (lint, tests, evals, image build+push) | ✅ |
 | 4.4 | This README + live demo script | ✅ |
+| 4.5 | Public voice demo on Render (free plan, hosted STT, passcode-gated) | ⏳ built + tested under Render-free limits, not yet deployed |
 
 ## Latency (turn-based, CPU, warm)
 
@@ -118,6 +120,17 @@ the real bugs behind each one are in NOTES.md.
   development (documented 429s in Milestones 2.3 and 3.3); running 30
   live-LLM scenarios on every push would make that worse for no benefit. The
   job still reports its pass rate to the run summary either way.
+- **The public voice demo uses hosted STT; local dev keeps on-device Whisper.**
+  Render's free plan is 0.1 CPU / 512 MB, which can't run faster-whisper at a
+  usable speed. `STT_BACKEND=hosted` sends the audio to Groq's
+  `whisper-large-v3` instead, the same way the LLM is already called. It's a
+  bigger Whisper model than the local `small`, and faster (≈0.5s vs ≈5s).
+  Same agent, same MCP tools; only where transcription runs changes.
+- **Piper is capped at one thread on Render.** The container sees the host's
+  16 cores but only gets 0.1 CPU of quota, so onnxruntime's default
+  thread-per-core made 16 threads fight over a tenth of a core. Measured under
+  Render-free limits: a voice turn took ~82s by default and ~8s with
+  `TTS_NUM_THREADS=1`.
 - **CD stops at pushing a Docker image to GHCR, not auto-deploying to EC2.**
   Two reasons. Cost: the EC2 instance is stopped whenever it isn't being
   tested (compute and the public-IPv4 charge only bill while it runs), so an
@@ -145,12 +158,14 @@ uvicorn agent.main:app --reload --ws-ping-interval 20 --ws-ping-timeout 90
 # open http://127.0.0.1:8000/stream
 ```
 
-Tests: `pytest` (56 tests, mocked, no network — runs in well under a second).
+Tests: `pytest` (80 tests, mocked, no network — runs in well under a second).
 Evals: `pytest -m eval` or `python -m evals.runner` (live LLM, Shopify mocked).
 
-## Deployment (text-mode)
+## Deployment
 
-The deployed target drops the voice stack entirely (`agent/main_text.py`,
+### Text-mode API (AWS EC2)
+
+This deployed target drops the voice stack entirely (`agent/main_text.py`,
 `POST /converse/text` + `GET /health`) — Whisper's RAM footprint doesn't fit
 a free-tier instance, and voice is meant to be demoed locally.
 
@@ -164,6 +179,25 @@ entirely through AWS Systems Manager Session Manager — zero inbound security
 group rules, no SSH keys. See NOTES.md Milestone 4.2 for the full cost-safety
 and access-model reasoning.
 
+### Public voice demo (Render, free plan)
+
+`render.yaml` + `infra/Dockerfile.voice` deploy the full voice app
+(`agent/main.py`, the streaming page at `/stream`, barge-in, Piper TTS) with
+hosted STT. Render redeploys on every push to `master`. Visitors need the
+shared `DEMO_PASSCODE`, since every turn spends Groq quota and touches the
+Shopify dev store's carts.
+
+Setup, once: render.com → sign in with GitHub → **New → Blueprint** → pick
+this repo → fill in `LLM_API_KEY`, `SHOPIFY_STORE_DOMAIN`,
+`SHOPIFY_STOREFRONT_TOKEN` and a `DEMO_PASSCODE` of your choice.
+
+Measured locally under the same limits (`docker run --cpus 0.1 --memory 512m`):
+~8s per voice turn (STT ~0.5s, agent ~2s, TTS ~5s), ~355 MB memory, ~85s
+startup. The free service sleeps after 15 minutes idle, so open the link a
+couple of minutes before showing it to anyone.
+
+### CI
+
 GitHub Actions (`.github/workflows/ci.yml`) runs lint + tests on every push,
 runs the live eval suite and builds/pushes the deploy image to GHCR on pushes
 to `master`. See NOTES.md Milestone 4.3 for the CI scope decisions.
@@ -176,7 +210,7 @@ mcp_commerce/     MCP server wrapping the Shopify Storefront API
 voice/            STT (faster-whisper) + TTS (Piper) + VAD wrappers
 evals/            YAML eval scenarios + runner (fake Shopify, real agent loop)
 tests/            pytest unit + integration tests
-infra/            Dockerfile, docker-compose.yml
+infra/            Dockerfile (text, EC2), Dockerfile.voice (voice, Render), docker-compose.yml
 demo/             Shopify seed script, live demo script
 .github/workflows/ CI/CD
 ```
@@ -186,6 +220,9 @@ demo/             Shopify seed script, live demo script
 - Acoustic echo can still occasionally self-trigger barge-in without
   headphones (see [design decisions](#design-decisions)).
 - In-memory session/cart state — restarting the server loses all sessions.
+  On the Render demo that includes every sleep/wake cycle.
+- The Render demo is slow to wake (~1 min spin-up + ~85s startup on 0.1 CPU)
+  and ~8s per turn, versus a few seconds locally.
 - One Hinglish eval scenario is flaky due to underlying LLM non-determinism,
   not a fixed bug.
 - `checkout` returns a real Shopify hosted checkout URL but never completes

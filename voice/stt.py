@@ -5,13 +5,24 @@ Loads the `small` model lazily on first use (CPU, int8), not at import time
 model-load cost, especially in tests where `transcribe` is mocked outright
 and the model should never load at all. Language auto-detect stays on so
 Hinglish (mixed Hindi/English) input works without a hint, per CLAUDE.md.
+
+STT_BACKEND picks where transcription runs: "local" (default, this
+module's faster-whisper) or "hosted" (voice/stt_hosted.py, a hosted Whisper
+API — used by the free Render deploy, which is too small to run Whisper).
+faster_whisper is imported inside _get_model rather than at the top, so the
+hosted-only deploy image doesn't need it installed at all.
 """
 
 from __future__ import annotations
 
 import io
+import os
+from typing import TYPE_CHECKING
 
-from faster_whisper import WhisperModel
+from voice import stt_hosted
+
+if TYPE_CHECKING:
+    from faster_whisper import WhisperModel
 
 _model: WhisperModel | None = None
 
@@ -40,6 +51,8 @@ LOW_LANGUAGE_CONFIDENCE_THRESHOLD = 0.6
 def _get_model() -> WhisperModel:
     global _model
     if _model is None:
+        from faster_whisper import WhisperModel
+
         _model = WhisperModel("small", device="cpu", compute_type="int8")
     return _model
 
@@ -58,6 +71,12 @@ def transcribe(audio_bytes: bytes) -> tuple[str, str]:
     Returns (text, detected_language). A segment Whisper itself flags as
     likely non-speech is dropped rather than included in the transcript.
     """
+    backend = os.environ.get("STT_BACKEND", "local")
+    if backend == "hosted":
+        return stt_hosted.transcribe(audio_bytes)
+    if backend != "local":
+        raise ValueError(f"Unknown STT_BACKEND {backend!r} (expected 'local' or 'hosted')")
+
     text, info = _transcribe_once(audio_bytes)
 
     if info.language != "en" and info.language_probability < LOW_LANGUAGE_CONFIDENCE_THRESHOLD:

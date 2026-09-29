@@ -1,0 +1,9 @@
+python-dotenv
+requests
+fastapi
+uvicorn[standard]
+python-multipart
+mcp==1.28.1  # pinned: 2.0.0 moved/removed mcp.server.fastmcp, breaking mcp_commerce/server.py
+piper-tts==1.5.0  # pinned to the version verified locally; the voice model download command lives here
+webrtcvad-wheels
+# No faster-whisper: the Render deploy uses hosted STT (STT_BACKEND=hosted, see voice/stt_hosted.py).

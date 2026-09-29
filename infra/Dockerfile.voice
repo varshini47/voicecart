@@ -1,0 +1,39 @@
+# Full voice demo image for the free Render deploy (see render.yaml).
+# Unlike infra/Dockerfile (text-mode, EC2), this runs agent/main.py with
+# the streaming mic page, barge-in and Piper TTS. Speech-to-text is hosted
+# (STT_BACKEND=hosted): Render's free plan is 0.1 CPU / 512 MB, far too
+# small to run faster-whisper, so faster-whisper isn't installed here.
+#
+# Build from the repo root: docker build -f infra/Dockerfile.voice -t voicecart-voice .
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-voice-deploy.txt .
+RUN pip install --no-cache-dir -r requirements-voice-deploy.txt
+
+# voice/models/ is gitignored (the .onnx file is ~60 MB), so fetch the
+# Piper voice at build time instead of expecting it in the repo.
+RUN python -m piper.download_voices --download-dir voice/models en_US-lessac-medium
+
+COPY agent/ agent/
+COPY mcp_commerce/ mcp_commerce/
+COPY voice/ voice/
+
+# TTS_NUM_THREADS=1: see voice/tts.py — the default thread-per-host-core
+# made Piper ~6x slower under Render free's 0.1 CPU quota.
+ENV PYTHONUNBUFFERED=1 \
+    STT_BACKEND=hosted \
+    TTS_NUM_THREADS=1 \
+    TTS_PRELOAD=1 \
+    PORT=8000
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ[\"PORT\"]}/health', timeout=3)" || exit 1
+
+# `sh -c` so ${PORT} expands; `exec` so uvicorn replaces the shell and
+# receives Render's shutdown signal directly (clean stop on redeploy). The
+# longer WebSocket keepalive is the same one the local streaming demo needs
+# (see NOTES.md, Milestone 3.1).
+CMD ["sh", "-c", "exec uvicorn agent.main:app --host 0.0.0.0 --port ${PORT} --ws-ping-interval 20 --ws-ping-timeout 90"]

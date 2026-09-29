@@ -46,6 +46,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     monkeypatch.setattr(main.mcp_client, "connect", noop)
     monkeypatch.setattr(main.mcp_client, "close", noop)
+    # No passcode gate unless a test turns it on (see test_access.py) —
+    # a DEMO_PASSCODE in someone's local .env mustn't break every test.
+    monkeypatch.delenv("DEMO_PASSCODE", raising=False)
+    monkeypatch.delenv("TTS_PRELOAD", raising=False)  # would load the real Piper model
     with TestClient(main.app) as test_client:
         yield test_client
 

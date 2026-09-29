@@ -48,7 +48,7 @@ voicecart/
 ## Tech decisions (do not change without discussing)
 
 - **Python 3.11+, FastAPI, uv or pip-tools for deps.** Type hints everywhere; pydantic models for all tool inputs/outputs.
-- **STT:** faster-whisper, `small` model, CPU is fine for turn-based. Language auto-detect on (needed for Hinglish).
+- **STT:** faster-whisper, `small` model, CPU is fine for turn-based. Language auto-detect on (needed for Hinglish). Exception, agreed 2026-09-29: the free Render voice deploy uses hosted Whisper (`STT_BACKEND=hosted`, Groq `whisper-large-v3`), because 0.1 CPU can't run faster-whisper. Local dev stays on faster-whisper.
 - **TTS:** Piper (local, free).
 - **LLM:** provider-agnostic client. Default to a cheap/fast model via env var `LLM_MODEL`; all provider config through env vars, never hardcoded. Must support tool calling.
 - **MCP:** official Python MCP SDK. Tools defined with strict JSON schemas; every tool returns structured results including an `error` field rather than raising into the agent loop.

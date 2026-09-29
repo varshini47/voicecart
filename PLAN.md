@@ -176,6 +176,11 @@ Built `README.md` (architecture diagram, status table, real latency numbers from
 
 **Scope change 2026-09-29:** owner decided not to record a demo video. `demo/DEMO_SCRIPT.md` was rewritten as a live-demo walkthrough (e.g. for showing the project in an interview), and all video references were removed from the README and CLAUDE.md. With that, Week 4 is complete.
 
+**Milestone 4.5 — Public voice demo (Render).** Built and tested 2026-09-29; deploy pending.
+Owner asked for a shareable link to the full voice version (the EC2 deploy is text-only and not publicly reachable). HF Spaces turned out to need a paid plan for Docker, Cloud Run needs a card; owner picked Render's free plan. Built: `STT_BACKEND=hosted` (`voice/stt_hosted.py`, Groq `whisper-large-v3`), a `DEMO_PASSCODE` gate on both voice endpoints (`agent/access.py`), `/health`, `infra/Dockerfile.voice`, `render.yaml`. Tested the image locally under Render-free limits (`--cpus 0.1 --memory 512m`), which surfaced a real problem: Piper took ~56–79s per reply because onnxruntime started 16 threads on a 0.1-CPU quota. Fixed with `TTS_NUM_THREADS=1` plus preloading Piper at startup: ~8s per turn. See NOTES.md.
+
+**Still open:** owner creates the Render Blueprint and enters the secrets, then we test the real link with a real mic.
+
 ---
 
 ## Resume bullet targets (write these only when they're true)

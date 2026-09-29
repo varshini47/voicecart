@@ -43,7 +43,8 @@ class _TurnState:
 
 
 async def handle_stream(websocket: WebSocket, mcp_client: MCPClient, session_id: str | None) -> None:
-    await websocket.accept()
+    # The caller (agent/main.py) has already accepted the connection, so it
+    # can check the demo passcode before any audio is processed.
     if session_id is None:
         session_id = session.new_session_id()
     await websocket.send_json({"type": "ready", "session_id": session_id})

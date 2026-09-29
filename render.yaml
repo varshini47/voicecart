@@ -1,0 +1,33 @@
+# Render Blueprint for the public voice demo (free plan). Render reads this
+# file when you create a "Blueprint" from the GitHub repo. Secrets marked
+# `sync: false` are typed into the Render dashboard at setup, never
+# committed here. See README.md's "Deployment" section.
+services:
+  - type: web
+    name: voicecart-voice
+    runtime: docker
+    dockerfilePath: ./infra/Dockerfile.voice
+    dockerContext: .
+    plan: free
+    region: singapore  # closest Render region to India
+    healthCheckPath: /health
+    autoDeployTrigger: commit  # redeploy on every push to the connected branch
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: STT_BACKEND
+        value: hosted
+      - key: LLM_MODEL
+        value: openai/gpt-oss-120b
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_API_KEY
+        sync: false
+      - key: SHOPIFY_STORE_DOMAIN
+        sync: false
+      - key: SHOPIFY_STOREFRONT_TOKEN
+        sync: false
+      # No SHOPIFY_ADMIN_TOKEN: mcp_commerce only uses the Storefront API,
+      # so the public deploy doesn't get a secret it never needs.
+      - key: DEMO_PASSCODE
+        sync: false

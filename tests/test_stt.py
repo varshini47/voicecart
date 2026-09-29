@@ -8,7 +8,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 from voice import stt
+
+
+@pytest.fixture(autouse=True)
+def local_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These tests cover the local faster-whisper path; make sure a
+    # STT_BACKEND set in someone's .env can't reroute them.
+    monkeypatch.delenv("STT_BACKEND", raising=False)
 
 
 @dataclass

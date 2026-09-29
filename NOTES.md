@@ -343,3 +343,24 @@ After both fixes, rebuilt and ran the real container: `/health` returns 200, `PO
 
 **Review:**
 - Be able to explain the CI/CD boundary in one breath: "CI is automated through to a published image. Deploy is manual because the demo box runs on demand to keep costs at zero, and I didn't want personal-account cloud credentials in CI. For a team, I'd add an OIDC-based deploy job with a narrowly scoped IAM role."
+
+## Week 4, Milestone 4.5 — Public voice demo on Render (2026-09-29)
+
+**Why:** the owner wanted a shareable link to the *voice* version. The EC2 deploy is text-only and bound to `127.0.0.1` (reachable only over SSM), so there was no public link at all.
+
+**Platform choice:** HF Spaces was the first pick, but its docs say Docker Spaces now need a paid plan. Cloud Run needs a card on a billing account. The owner chose Render's free plan: 0.1 CPU / 512 MB, sleeps after 15 min idle, WebSockets supported (all checked against Render's docs).
+
+**Built:**
+- `voice/stt_hosted.py` + `STT_BACKEND` switch in `voice/stt.py`: `local` (default, faster-whisper) or `hosted` (OpenAI-compatible `/audio/transcriptions`, Groq `whisper-large-v3`). `STT_API_KEY`/`STT_BASE_URL` fall back to the `LLM_*` values, so it needs no new secrets. It keeps the same `no_speech_prob` segment filter and maps `"english"`/`"hindi"` to ISO codes. `faster_whisper` is now imported lazily, so the Render image doesn't install it.
+- `agent/access.py`: a `DEMO_PASSCODE` gate on `POST /converse` (form field, 401) and `/converse/stream` (first WebSocket message `{"type":"auth"}`, else error + close 1008). The passcode isn't a URL query param because uvicorn's access log records full URLs. I verified the passcode never appears in the logs. With no `DEMO_PASSCODE` set (local dev) there's no gate, and the page's auth message is just ignored.
+- `GET /health` on `agent/main.py` (Render health check). Both pages got a passcode field.
+- `infra/Dockerfile.voice` (downloads the Piper voice at build time, since `voice/models/` is gitignored), `requirements-voice-deploy.txt`, `render.yaml` (Singapore region; no `SHOPIFY_ADMIN_TOKEN`, since the code only uses the Storefront API). `.dockerignore` now excludes only `voice/models/` instead of all of `voice/`.
+
+**A real bug found by testing under Render's limits** (`docker run --cpus 0.1 --memory 512m`): the first run took **82s per voice turn, and TTS alone took 79s**. STT (0.5s) and the agent (1.5s) were fine. `os.cpu_count()` inside the container said 16, so onnxruntime started 16 threads that shared 0.1 CPU of quota. Measured Piper in isolation: ~26s per reply with the default threads, **~4.5s with 1 thread**. Fix: `TTS_NUM_THREADS` (rebuilds Piper's ONNX session with a thread cap, because `PiperVoice.load` doesn't accept session options) set to 1 in the image, plus `TTS_PRELOAD` so the model load happens at startup instead of on the first visitor's turn. **After the fix: ~7–8s per turn** (STT ~0.5s, agent ~2s, TTS ~5s), ~355 MB memory, ~85s startup.
+
+**Also fixed:** `stream.html` didn't release the mic/audio graph on an unexpected disconnect, so it kept calling `ws.send` on a closed socket. The Dockerfile uses exec-form `CMD` so uvicorn receives Render's shutdown signal.
+
+**Verified:** 80 tests (22 new: hosted STT, backend switch, passcode on both endpoints, `/health`, TTS thread cap/preload), ruff clean. A live hosted-STT call returned an exact transcript in 877ms. Full live runs (hosted STT → live Groq LLM → live Shopify → Piper) passed both locally and in the constrained container, with the right brand-clarification reply. **Not yet verified:** the real Render deploy and a real browser mic on the public link.
+
+**Review:**
+- Be able to explain: why the hosted STT isn't a downgrade (a bigger Whisper model, on Groq's hardware, same pattern as the LLM call), why the passcode travels in the first WebSocket message instead of the URL, and the thread-oversubscription bug (container CPU *quota* vs. visible *cores*, a classic container gotcha: 16 threads × 0.1 CPU).
