@@ -364,3 +364,24 @@ After both fixes, rebuilt and ran the real container: `/health` returns 200, `PO
 
 **Review:**
 - Be able to explain: why the hosted STT isn't a downgrade (a bigger Whisper model, on Groq's hardware, same pattern as the LLM call), why the passcode travels in the first WebSocket message instead of the URL, and the thread-oversubscription bug (container CPU *quota* vs. visible *cores*, a classic container gotcha: 16 threads × 0.1 CPU).
+
+### 4.5 follow-up — out-of-memory on the real Render deploy (2026-09-29)
+
+**What happened:** the owner's first real test on Render worked for 6 turns (including a brand clarification and Hinglish), then returned a 502. Render emailed that the service had gone over its memory limit.
+
+**Reproduced locally** with a 16-turn soak test under `--cpus 0.1 --memory 512m`: the container started at **383 MB** before any traffic, sat around 450 MB, and was OOM-killed on turn 8 (a long "read my cart back" reply). Per-process: uvicorn 279 MB idle, MCP subprocess 58 MB.
+
+**Root cause, measured:** Piper's peak memory grows with the length of the *single sentence* it's speaking, about 5–6 MB per word (10 words → 182 MB, 40 → 340 MB, 80 → 544 MB for Piper alone). onnxruntime's default memory arena also keeps that peak allocation forever instead of releasing it. My earlier "load Piper, then swap in a 1-thread session" also loaded the model twice.
+
+**Fix (voice/tts.py):**
+- Speak replies in chunks of ≤20 words (`MAX_CHUNK_WORDS`): split at sentence ends, then commas/semicolons/colons/dashes, and mid-clause only if one clause is itself too long. The chunks are appended to a single WAV (format set once from the voice config).
+- onnxruntime `enable_cpu_mem_arena=False` / `enable_mem_pattern=False`, so memory goes back after each chunk.
+- Build `PiperVoice` directly with our own session (one model load).
+
+**After the fix, same soak test:** starts at **204 MB**, peaks at **302 MB**, no OOM over 16 turns; startup 35s (was 85s). The 80-word sentence that crashed Piper on its own now peaks at 310 MB (it takes 32s on 0.1 CPU, but finishes).
+
+**Also found during the soak:** Groq 429s (my own testing burned the free-tier quota) surfaced on `POST /converse` as a bare 500. `/converse` now replies in plain language on STT/LLM failure, like `/converse/stream` and `/converse/text` already did. Its blocking STT/TTS calls now run in a thread, so a long reply on 0.1 CPU can't stall health checks and other requests.
+
+**Still open, seen in the owner's transcript:** Groq's Whisper wrote Hinglish in Devanagari ("नो प्लीज चकाओके" for roughly "no please checkout"), and the agent then *removed* the milk instead of asking what was meant. The local STT's low-confidence English retry has no hosted equivalent, because Groq doesn't return a language probability. Planned fix: the Whisper `prompt` parameter with romanized Hinglish and product names, plus an eval for "garbled request → clarify, don't mutate".
+
+**Review:** be able to explain why the memory was proportional to sentence length (the model processes the whole sentence's phonemes at once), what a memory arena is and why it made the peak permanent, and why chunking at clause boundaries is the fix rather than a bigger instance.

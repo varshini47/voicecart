@@ -55,6 +55,38 @@ def test_run_turn_called_with_session_id_and_transcript(client: TestClient, mock
     assert body["session_id"] == "my-session"
 
 
+def test_failed_turn_returns_plain_language_reply(
+    client: TestClient, mock_pipeline: FakePipeline, monkeypatch
+) -> None:
+    # E.g. a Groq 429 after agent/llm.py's retries give up — seen live
+    # during Render testing, where it surfaced as a bare 500.
+    async def failing_run_turn(session_id: str, user_text: str, mcp_client) -> str:
+        raise RuntimeError("simulated LLM provider failure")
+
+    monkeypatch.setattr("agent.main.agent_loop.run_turn", failing_run_turn)
+
+    body = _post(client)
+
+    assert body["transcript"] == "hello world"
+    assert "try again" in body["reply_text"]
+    assert body["reply_audio_base64"]
+
+
+def test_failed_stt_returns_plain_language_reply(
+    client: TestClient, mock_pipeline: FakePipeline, monkeypatch
+) -> None:
+    def failing_transcribe(audio_bytes: bytes) -> tuple[str, str]:
+        raise RuntimeError("simulated hosted STT failure")
+
+    monkeypatch.setattr("voice.stt.transcribe", failing_transcribe)
+
+    body = _post(client)
+
+    assert body["transcript"] == ""
+    assert "try again" in body["reply_text"]
+    assert mock_pipeline.run_turn_calls == []
+
+
 def test_latency_logged_without_leaking_audio(
     client: TestClient, mock_pipeline: FakePipeline, caplog
 ) -> None:

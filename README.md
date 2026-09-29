@@ -51,7 +51,7 @@ schemas and structured `error` fields instead of exceptions — so the backend
 | 4.2 | AWS EC2 deploy (text-mode, SSM-only access) | ✅ |
 | 4.3 | GitHub Actions CI/CD (lint, tests, evals, image build+push) | ✅ |
 | 4.4 | This README + live demo script | ✅ |
-| 4.5 | Public voice demo on Render (free plan, hosted STT, passcode-gated) | ⏳ built + tested under Render-free limits, not yet deployed |
+| 4.5 | Public voice demo on Render (free plan, hosted STT, passcode-gated) | ⏳ deployed; memory fix pending redeploy |
 
 ## Latency (turn-based, CPU, warm)
 
@@ -131,6 +131,11 @@ the real bugs behind each one are in NOTES.md.
   thread-per-core made 16 threads fight over a tenth of a core. Measured under
   Render-free limits: a voice turn took ~82s by default and ~8s with
   `TTS_NUM_THREADS=1`.
+- **Replies are spoken in ≤20-word chunks.** Piper's peak memory grows with
+  sentence length (~5–6 MB per word; one 80-word sentence alone went past
+  512 MB), and the first real Render deploy was killed for memory. Chunking at
+  sentence/comma boundaries, plus turning off onnxruntime's memory arena
+  (which otherwise keeps its peak forever), keeps the whole app under ~300 MB.
 - **CD stops at pushing a Docker image to GHCR, not auto-deploying to EC2.**
   Two reasons. Cost: the EC2 instance is stopped whenever it isn't being
   tested (compute and the public-IPv4 charge only bill while it runs), so an
@@ -158,7 +163,7 @@ uvicorn agent.main:app --reload --ws-ping-interval 20 --ws-ping-timeout 90
 # open http://127.0.0.1:8000/stream
 ```
 
-Tests: `pytest` (80 tests, mocked, no network — runs in well under a second).
+Tests: `pytest` (88 tests, mocked, no network — runs in well under a second).
 Evals: `pytest -m eval` or `python -m evals.runner` (live LLM, Shopify mocked).
 
 ## Deployment
@@ -192,8 +197,8 @@ this repo → fill in `LLM_API_KEY`, `SHOPIFY_STORE_DOMAIN`,
 `SHOPIFY_STOREFRONT_TOKEN` and a `DEMO_PASSCODE` of your choice.
 
 Measured locally under the same limits (`docker run --cpus 0.1 --memory 512m`):
-~8s per voice turn (STT ~0.5s, agent ~2s, TTS ~5s), ~355 MB memory, ~85s
-startup. The free service sleeps after 15 minutes idle, so open the link a
+~8s per short voice turn (STT ~0.5s, agent ~2s, TTS ~5s; long replies take
+longer), ~200 MB idle / ~300 MB peak over a 16-turn soak test, ~35s startup. The free service sleeps after 15 minutes idle, so open the link a
 couple of minutes before showing it to anyone.
 
 ### CI
@@ -221,8 +226,9 @@ demo/             Shopify seed script, live demo script
   headphones (see [design decisions](#design-decisions)).
 - In-memory session/cart state — restarting the server loses all sessions.
   On the Render demo that includes every sleep/wake cycle.
-- The Render demo is slow to wake (~1 min spin-up + ~85s startup on 0.1 CPU)
-  and ~8s per turn, versus a few seconds locally.
+- The Render demo is slow to wake (~1 min spin-up + ~35s startup on 0.1 CPU)
+  and ~8s per short turn (long replies take longer), versus a few seconds
+  locally.
 - One Hinglish eval scenario is flaky due to underlying LLM non-determinism,
   not a fixed bug.
 - `checkout` returns a real Shopify hosted checkout URL but never completes

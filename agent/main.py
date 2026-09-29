@@ -110,14 +110,26 @@ async def converse(
 
     audio_bytes = await audio.read()
 
+    # STT and TTS are blocking and can take seconds (much longer on the
+    # Render deploy's 0.1 CPU), so they run in a thread, as in
+    # agent/ws_stream.py, instead of stalling every other request,
+    # health checks included.
     t0 = time.perf_counter()
-    transcript, language = stt.transcribe(audio_bytes)
-    t1 = time.perf_counter()
-
-    reply_text = await agent_loop.run_turn(session_id, transcript, mcp_client)
+    t1 = t0  # stays t0 if STT itself fails
+    transcript, language = "", "en"
+    try:
+        transcript, language = await asyncio.to_thread(stt.transcribe, audio_bytes)
+        t1 = time.perf_counter()
+        reply_text = await agent_loop.run_turn(session_id, transcript, mcp_client)
+    except Exception:
+        # E.g. the hosted STT or LLM provider rate-limiting us (seen in
+        # practice on Groq's free tier). Reply in plain language instead of
+        # a bare 500, per CLAUDE.md's error-recovery requirement.
+        logger.exception("session=%s turn failed", session_id)
+        reply_text = "Something went wrong processing that — please try again in a moment."
     t2 = time.perf_counter()
 
-    reply_audio = tts.synthesize(reply_text)
+    reply_audio = await asyncio.to_thread(tts.synthesize, reply_text)
     t3 = time.perf_counter()
 
     # Log transcripts and tool calls, never raw audio or API keys (CLAUDE.md).
