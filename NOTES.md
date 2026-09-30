@@ -385,3 +385,17 @@ After both fixes, rebuilt and ran the real container: `/health` returns 200, `PO
 **Still open, seen in the owner's transcript:** Groq's Whisper wrote Hinglish in Devanagari ("नो प्लीज चकाओके" for roughly "no please checkout"), and the agent then *removed* the milk instead of asking what was meant. The local STT's low-confidence English retry has no hosted equivalent, because Groq doesn't return a language probability. Planned fix: the Whisper `prompt` parameter with romanized Hinglish and product names, plus an eval for "garbled request → clarify, don't mutate".
 
 **Review:** be able to explain why the memory was proportional to sentence length (the model processes the whole sentence's phonemes at once), what a memory arena is and why it made the peak permanent, and why chunking at clause boundaries is the fix rather than a bigger instance.
+
+### 4.5 follow-up — Hinglish on hosted STT (2026-09-30)
+
+**What happened:** on the Render deploy, Groq's Whisper wrote Hinglish in Devanagari ("नो प्लीज चकाओके" for "no please, checkout karo"), and the agent read that as a request to *remove* the milk.
+
+**Fix, in two layers:**
+- **STT (`voice/stt_hosted.py`):** send `language="en"` plus a romanized-Hinglish `prompt` naming the catalog's brands. Measured on Hindi-voiced test audio: auto-detect gave Devanagari every time; prompt alone gave romanized text 4/5; `language="en"` alone *translated*, sometimes wrongly ("bread cart se hata do" → "Remove the bread cut"); both together were romanized and faithful 5/5, with plain English unaffected. Side effect: the hosted backend now always reports `language="en"`. That's harmless, because the language is only echoed in API responses and nothing branches on it. The local faster-whisper backend is unchanged.
+- **Agent (`agent/agent_loop.py`):** a new system-prompt paragraph. Input comes from speech recognition and can be garbled, so only change the cart when intent is clear. "No" after "anything else?" means "nothing else". Never call `remove_from_cart` unless the user clearly asked; if unsure, ask. This is the backstop for when STT still gets it wrong.
+
+**Evals:** two new scenarios. `31_hinglish_no_then_checkout_keeps_cart` replays the real session in romanized form, and `32_garbled_devanagari_keeps_cart` uses the exact garbled Devanagari transcripts. Both passed live. As a regression check for the new "don't remove unless clearly asked" rule, the five existing remove scenarios (06, 07, 17, 19, 26) were run live: 4/5 on the first pass. `hinglish_remove_without_respecifying_brand` (26) called `get_cart` without removing, then passed 2/2 on rerun. That's the same non-deterministic flake documented in 3.3/4.3, not a new regression, but worth watching in the next CI run. Unit tests: 89 pass.
+
+**Not yet verified:** the owner retesting on Render with their real voice.
+
+**Review:** be able to explain why the fix is layered (better STT lowers how often the agent sees garbage; the prompt rule limits the damage when it still does), and why `language="en"` alone was worse (Whisper translates into the target language rather than transliterating).

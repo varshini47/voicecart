@@ -64,7 +64,7 @@ schemas and structured `error` fields instead of exceptions — so the backend
 
 ## Eval results
 
-30 scenarios in `evals/scenarios/` (20 English, 10 Hinglish), scored against
+32 scenarios in `evals/scenarios/` (20 English, 12 Hinglish), scored against
 the real agent loop with Shopify mocked — tool selection, argument
 correctness, clarification behavior, and checkout-confirmation safety.
 Verified live in CI (GitHub Actions, `master`-only, live Groq calls):
@@ -72,7 +72,9 @@ Verified live in CI (GitHub Actions, `master`-only, live Groq calls):
 **29/30 passing (97%).** The sole failure, `hinglish_remove_without_respecifying_brand`,
 is a documented non-deterministic flake in this model's tool-calling (passes
 3 of 4 attempts across sessions) — not a prompt gap. See NOTES.md's Milestone
-3.3 and 4.3 entries for the full diagnosis.
+3.3 and 4.3 entries for the full diagnosis. That run predates scenarios 31–32
+(garbled or "no"-then-checkout Hinglish must never remove items), which
+passed live locally and join CI on the next `master` push.
 
 Run it yourself: `python -m evals.runner` (needs `LLM_API_KEY` in `.env`; Shopify
 is mocked, no real store needed).
@@ -91,7 +93,7 @@ the real bugs behind each one are in NOTES.md.
   prompt instructs the model to confirm before checkout and ask before
   guessing an ambiguous brand, and `checkout(confirm=False)` defaulting to a
   structured error is the code-level safety net if the prompt ever fails.
-  Verified with the 30-scenario eval suite, not vibes.
+  Verified with the 32-scenario eval suite, not vibes.
 - **In-memory session store, no database.** A `dict[session_id, ...]` for
   both conversation history and cart mapping. Correct for a single-process
   local demo; the growth-is-unbounded and process-restart-loses-everything

@@ -66,6 +66,19 @@ def test_sends_audio_to_transcription_endpoint_with_llm_credentials(monkeypatch,
     assert call["files"]["file"] == ("audio.wav", WAV_AUDIO)
 
 
+def test_requests_romanized_hinglish(monkeypatch, groq_env) -> None:
+    # Without these, Hinglish came back in Devanagari and the agent misread
+    # it (seen live on the Render deploy) — see stt_hosted.PROMPT.
+    fake = _fake_post(monkeypatch, {"text": "do packet doodh add karo", "language": "english"})
+
+    stt_hosted.transcribe(WAV_AUDIO)
+
+    data = fake.calls[0]["data"]
+    assert data["language"] == "en"
+    assert "doodh" in data["prompt"]
+    assert "Amul" in data["prompt"]
+
+
 def test_stt_specific_env_vars_override_llm_ones(monkeypatch, groq_env) -> None:
     monkeypatch.setenv("STT_API_KEY", "stt-key")
     monkeypatch.setenv("STT_BASE_URL", "https://stt.example.com/v1")

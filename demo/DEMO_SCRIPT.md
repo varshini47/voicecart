@@ -56,5 +56,5 @@ one Hinglish command.
    show it correctly resolving quantity 2, not defaulting to 1 (this exact
    failure mode was a real bug, fixed in Milestone 3.3 — worth mentioning).
 
-6. **Close.** One line on what's under the hood: "30-scenario eval suite,
+6. **Close.** One line on what's under the hood: "32-scenario eval suite,
    Dockerized, deployed to AWS, CI on every push."

@@ -187,7 +187,7 @@ Owner asked for a shareable link to the full voice version (the EC2 deploy is te
 
 - Built a real-time voice commerce agent (STT → LLM tool-calling → TTS) with barge-in interruption handling and Hindi-English code-switched input
 - Designed an MCP server exposing swappable commerce tools over the Shopify API, with confirmation-gated mutations and structured error recovery
-- Authored a 30-scenario eval suite (English + Hinglish) scoring tool selection and cart-state correctness, run in GitHub Actions CI alongside lint, tests, and Docker image publishing; deployed a text-mode API to AWS EC2
+- Authored a 32-scenario eval suite (English + Hinglish) scoring tool selection and cart-state correctness, run in GitHub Actions CI alongside lint, tests, and Docker image publishing; deployed a text-mode API to AWS EC2
 
 ## Scope discipline
 

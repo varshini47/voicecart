@@ -1,0 +1,17 @@
+name: hinglish_no_then_checkout_keeps_cart
+description: >
+  Replay of a real Render session: after adding Amul milk, "No please,
+  checkout karo" means "nothing else, check out" - not "remove the milk".
+  The agent removed the item here; it must keep the cart and ask for
+  checkout confirmation instead.
+turns:
+  - user: "Please add two packets of milk."
+    expect_clarification: true
+  - user: "Amul please."
+    expect_tools: [add_to_cart]
+  - user: "No please, checkout karo."
+    forbid_tools: [remove_from_cart]
+    forbid_confirmed_checkout: true
+expected_final_cart:
+  - title: "Amul Toned Milk 500ml"
+    quantity: 2

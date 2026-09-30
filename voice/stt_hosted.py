@@ -26,6 +26,27 @@ DEFAULT_MODEL = "whisper-large-v3"
 
 NO_SPEECH_PROB_THRESHOLD = 0.6  # same meaning as in voice/stt.py
 
+# Hinglish handling. Left to auto-detect, Groq's Whisper wrote Hinglish in
+# Devanagari ("नो प्लीज चकाओके" for "no please, checkout karo"), and the
+# agent then acted on a misreading. The local backend's fix (retry with
+# English when detection is unsure) needs a language probability, which
+# this API doesn't return. Measured on Hindi-voiced test audio instead:
+#   - auto-detect: Devanagari every time
+#   - prompt only: romanized 4/5
+#   - language="en" only: *translates*, sometimes wrongly
+#     ("bread cart se hata do" -> "Remove the bread cut")
+#   - prompt + language="en": romanized and faithful 5/5, plain English
+#     unaffected
+# Whisper imitates the style and spelling of its prompt, so this is written
+# as romanized Hinglish and names the catalog's brands (demo/seed_shopify.py).
+LANGUAGE = "en"
+PROMPT = (
+    "Do packet Amul doodh add karo. Nandini wala daal do. Bread cart se hata do. "
+    "Ek kilo basmati rice chahiye, checkout karo. Mother Dairy, Britannia, Modern, "
+    "Tata Salt, Fortune, Aashirvaad atta, India Gate, toor dal, moong dal, Maggi, "
+    "Lay's, Parle-G, Bru, Tata Tea, Coca-Cola, Colgate, Vim."
+)
+
 # verbose_json reports the detected language as a full name ("english"),
 # while the local backend and the rest of the app use ISO codes ("en").
 _LANGUAGE_CODES = {"english": "en", "hindi": "hi"}
@@ -50,7 +71,13 @@ def transcribe(audio_bytes: bytes) -> tuple[str, str]:
         f"{base_url}/audio/transcriptions",
         headers={"Authorization": f"Bearer {api_key}"},
         files={"file": (_filename_for(audio_bytes), audio_bytes)},
-        data={"model": model, "response_format": "verbose_json", "temperature": "0"},
+        data={
+            "model": model,
+            "response_format": "verbose_json",
+            "temperature": "0",
+            "language": LANGUAGE,
+            "prompt": PROMPT,
+        },
         timeout=30,
     )
     response.raise_for_status()

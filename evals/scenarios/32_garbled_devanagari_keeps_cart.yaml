@@ -1,0 +1,19 @@
+name: garbled_devanagari_keeps_cart
+description: >
+  The exact transcripts hosted Whisper produced on the Render deploy before
+  its Hinglish prompt fix ("नो प्लीज चकाओके" is a garbled "no please,
+  checkout karo"). An unclear message must never lead to removing items -
+  the agent should ask what was meant (or read back the cart for checkout),
+  leaving the cart as it was.
+turns:
+  - user: "Please add two packets of milk."
+    expect_clarification: true
+  - user: "अमूल प्लीज"
+    expect_tools: [add_to_cart]
+  - user: "नो प्लीज चकाओके"
+    forbid_tools: [remove_from_cart]
+    forbid_confirmed_checkout: true
+    expect_clarification: true
+expected_final_cart:
+  - title: "Amul Toned Milk 500ml"
+    quantity: 2
