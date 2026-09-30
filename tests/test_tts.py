@@ -108,6 +108,38 @@ def test_no_chunk_exceeds_limit_and_no_words_lost() -> None:
     assert " ".join(chunks).split() == text.split()
 
 
+CHECKOUT_URL = (
+    "https://voicecart-dev.myshopify.com/cart/c/"
+    "Z2NwLWFzaWEtc291dGhlYXN0MTowMUpBWkQ1Q1hQTVJHUFdHNkZTWVc0NEVWUQ?key=4f8a2b9c1d7e6f3a5b0c8d2e9f1a7b3c"
+)
+
+
+def test_checkout_url_not_spoken() -> None:
+    # Spelling out this link took Piper to 614 MB on Render (NOTES.md 4.5).
+    text = f"Here is your checkout link: {CHECKOUT_URL}. Open it to finish."
+
+    assert tts._speakable(text) == "Here is your checkout link: the link on your screen. Open it to finish."
+    assert tts._chunks(tts._speakable(text)) == [
+        "Here is your checkout link: the link on your screen.",
+        "Open it to finish.",
+    ]
+
+
+def test_markdown_link_keeps_label_drops_url() -> None:
+    assert tts._speakable(f"[Complete your order]({CHECKOUT_URL}) now.") == "Complete your order now."
+
+
+def test_long_code_not_spoken() -> None:
+    # Spelled out letter by letter, a 500-character code alone peaked at 480 MB.
+    assert tts._speakable(f"Your order ID is {'x' * 500}.") == "Your order ID is the code on your screen."
+
+
+def test_ordinary_long_words_still_spoken() -> None:
+    text = "Mother Dairy full-cream milk, Aashirvaad atta, internationalization."
+
+    assert tts._speakable(text) == text
+
+
 @dataclass
 class FakeConfig:
     sample_rate: int = 22050
@@ -126,6 +158,15 @@ class FakeVoice:
         assert set_wav_format is False  # format is set once, up front
         self.spoken.append(text)
         wav_file.writeframes(b"\x00\x00" * 2 * len(text.split()))
+
+
+def test_synthesize_does_not_speak_urls(monkeypatch) -> None:
+    voice = FakeVoice()
+    monkeypatch.setattr(tts, "_voice", voice)
+
+    tts.synthesize(f"Here is your checkout link: {CHECKOUT_URL}")
+
+    assert voice.spoken == ["Here is your checkout link: the link on your screen"]
 
 
 def test_synthesize_joins_chunks_into_one_wav(monkeypatch) -> None:

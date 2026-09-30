@@ -14,6 +14,11 @@ limits (0.1 CPU / 512 MB, see NOTES.md Milestone 4.5):
 - Piper's peak memory grows with the length of the sentence it's speaking
   (~5-6 MB per word; one 80-word sentence alone went past 512 MB), so
   replies are spoken in chunks of at most MAX_CHUNK_WORDS words.
+- A URL has no spaces, so the word cap alone missed it: a reply carrying a
+  ~170-character checkout link was spoken as one "word", spelled out letter
+  by letter, and took Piper to 614 MB. URLs, and any other token longer
+  than MAX_WORD_CHARS (order IDs, codes), are replaced with a short phrase
+  instead: the text is already on screen, and nobody wants it read aloud.
 - onnxruntime's memory arena keeps its peak allocation forever, so it's
   turned off: memory is handed back after each chunk.
 - TTS_NUM_THREADS caps onnxruntime's thread count. By default it starts
@@ -40,12 +45,20 @@ MODEL = MODEL_DIR / "en_US-lessac-medium.onnx"
 CONFIG = MODEL_DIR / "en_US-lessac-medium.onnx.json"
 
 MAX_CHUNK_WORDS = 20  # ~230 MB peak for Piper itself, measured
+MAX_WORD_CHARS = 30  # longer than any real word
+SPOKEN_LINK = "the link on your screen"
+SPOKEN_CODE = "the code on your screen"
 
 _voice: PiperVoice | None = None
 
 _MARKDOWN_EMPHASIS = re.compile(r"(\*{1,2}|_{1,2})(.+?)\1")
 _MARKDOWN_HEADER = re.compile(r"^#{1,6}\s+", re.MULTILINE)
 _MARKDOWN_BULLET = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+", re.MULTILINE)
+
+_MARKDOWN_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_URL = re.compile(r"(?:https?://|www\.)\S+")
+_LONG_TOKEN = re.compile(r"\S{31,}")  # longer than MAX_WORD_CHARS
+_TRAILING_PUNCTUATION = ".,;:!?)"
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _CLAUSE_END = re.compile(r"(?<=[,;:—])\s*")
@@ -59,10 +72,28 @@ def _strip_markdown(text: str) -> str:
     system prompt tells the model not to use markdown at all; this is a
     defensive second layer for whatever slips through anyway.
     """
+    text = _MARKDOWN_LINK.sub(lambda m: m.group(1), text)
     text = _MARKDOWN_EMPHASIS.sub(r"\2", text)
     text = _MARKDOWN_HEADER.sub("", text)
     text = _MARKDOWN_BULLET.sub("", text)
     return text
+
+
+def _replace(pattern: re.Pattern[str], phrase: str, text: str) -> str:
+    """Swap each match for `phrase`, keeping punctuation that followed it
+    (a trailing "." still has to end the sentence for _chunks)."""
+
+    def spoken(match: re.Match[str]) -> str:
+        token = match.group(0)
+        return phrase + token[len(token.rstrip(_TRAILING_PUNCTUATION)) :]
+
+    return pattern.sub(spoken, text)
+
+
+def _speakable(text: str) -> str:
+    """What Piper should actually say: no markdown, no URLs, no long codes."""
+    text = _replace(_URL, SPOKEN_LINK, _strip_markdown(text))
+    return _replace(_LONG_TOKEN, SPOKEN_CODE, text)
 
 
 def _chunks(text: str, max_words: int = MAX_CHUNK_WORDS) -> list[str]:
@@ -134,6 +165,6 @@ def synthesize(text: str) -> bytes:
         wav_file.setframerate(voice.config.sample_rate)
         wav_file.setsampwidth(2)
         wav_file.setnchannels(1)
-        for chunk in _chunks(_strip_markdown(text)):
+        for chunk in _chunks(_speakable(text)):
             voice.synthesize_wav(chunk, wav_file, set_wav_format=False)
     return buffer.getvalue()

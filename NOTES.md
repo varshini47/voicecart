@@ -399,3 +399,19 @@ After both fixes, rebuilt and ran the real container: `/health` returns 200, `PO
 **Not yet verified:** the owner retesting on Render with their real voice.
 
 **Review:** be able to explain why the fix is layered (better STT lowers how often the agent sees garbage; the prompt rule limits the damage when it still does), and why `language="en"` alone was worse (Whisper translates into the target language rather than transliterating).
+
+### 4.5 follow-up — out-of-memory at checkout (2026-09-30)
+
+**What happened:** the owner's Render retest passed the Hinglish case ("No, please check out" kept the cart and asked to confirm), then returned a 502 on the next turn, the checkout. Render reported the memory limit again.
+
+**Root cause, measured locally** (Piper in a fresh process, 1 thread, Windows peak working set): the checkout reply contains Shopify's ~170-character checkout URL. The 20-word chunker splits on spaces, so the whole URL counted as *one word*, and Piper spelled it out letter by letter in one pass: **614 MB** peak, against 220 MB for an ordinary reply. That's over Render's 512 MB before counting uvicorn and the MCP subprocess. Yesterday's 16-turn soak test never reached checkout, so it never hit this.
+
+**Fix (`voice/tts.py`):** a `_speakable()` step before chunking replaces URLs with "the link on your screen" and any other token over 30 characters (IDs, codes) with "the code on your screen". It keeps trailing punctuation, so sentence splitting still works. Markdown links keep their label. This affects only the audio; the reply text on the page still has the clickable link.
+
+**After the fix:** checkout reply 192 MB, a 500-character code 188 MB, ordinary reply unchanged at 220 MB.
+
+**A dead end, kept for the record:** splitting long tokens into 30-character pieces plus a 120-character chunk cap still peaked at 480 MB on a 500-character code, because spelled-out letters cost far more memory per character than ordinary words. Not speaking them at all is both simpler and actually bounded.
+
+**Known limit:** twenty random 29–30-character codes in one sentence (under the token limit) would still peak at ~1.7 GB. The agent doesn't produce that, so I didn't add more code for it.
+
+**Review:** be able to explain why memory depends on what is *spoken* (phonemes), not on characters or words, and why a URL is the worst case: every letter becomes a spoken word.
