@@ -249,3 +249,13 @@ def test_barge_in_cancels_in_flight_turn_and_drops_queued_utterance(
     # Exactly 2 real run_turn calls: the cancelled first one, and the third
     # utterance — the second (queued, never started) was dropped entirely.
     assert calls == ["hello world", "hello world"]
+
+
+def test_stream_page_serves_controls_the_script_needs(client: TestClient) -> None:
+    # stream.html's script looks these up by id at load time; a redesign that
+    # drops one breaks the page with no server-side error.
+    response = client.get("/stream")
+
+    assert response.status_code == 200
+    for element_id in ("toggle", "finalize", "status", "conversation", "reply-audio", "passcode", "theme-toggle"):
+        assert f'id="{element_id}"' in response.text

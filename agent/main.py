@@ -20,6 +20,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, UploadFile, WebSocket
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 load_dotenv()
@@ -50,6 +51,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="VoiceCart Agent", lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Shared assets for both demo pages (style.css), so they stay visually in sync.
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class ConverseResponse(BaseModel):

@@ -165,7 +165,7 @@ uvicorn agent.main:app --reload --ws-ping-interval 20 --ws-ping-timeout 90
 # open http://127.0.0.1:8000/stream
 ```
 
-Tests: `pytest` (88 tests, mocked, no network — runs in well under a second).
+Tests: `pytest` (97 tests, mocked, no network — runs in well under a second).
 Evals: `pytest -m eval` or `python -m evals.runner` (live LLM, Shopify mocked).
 
 ## Deployment

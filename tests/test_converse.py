@@ -100,3 +100,25 @@ def test_latency_logged_without_leaking_audio(
         assert field in message
     assert FAKE_AUDIO.decode() not in message
     assert "FAKE-WAV-BYTES" not in message
+
+
+def test_index_page_serves_controls_the_script_needs(client: TestClient) -> None:
+    # index.html's script looks these up by id at load time; a redesign that
+    # drops one breaks the page with no server-side error.
+    response = client.get("/")
+
+    assert response.status_code == 200
+    for element_id in ("record", "status", "conversation", "reply-audio", "passcode", "theme-toggle"):
+        assert f'id="{element_id}"' in response.text
+
+
+def test_shared_static_assets_are_served(client: TestClient) -> None:
+    # Both demo pages link these; without the /static mount they render
+    # unstyled and the theme button does nothing.
+    css = client.get("/static/style.css")
+    theme_js = client.get("/static/theme.js")
+
+    assert css.status_code == 200
+    assert "text/css" in css.headers["content-type"]
+    assert theme_js.status_code == 200
+    assert "javascript" in theme_js.headers["content-type"]

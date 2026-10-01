@@ -415,3 +415,19 @@ After both fixes, rebuilt and ran the real container: `/health` returns 200, `PO
 **Known limit:** twenty random 29–30-character codes in one sentence (under the token limit) would still peak at ~1.7 GB. The agent doesn't produce that, so I didn't add more code for it.
 
 **Review:** be able to explain why memory depends on what is *spoken* (phonemes), not on characters or words, and why a URL is the worst case: every letter becomes a spoken word.
+
+### UI polish — voice demo pages (2026-10-01)
+
+**What was built:** a redesign of both voice pages for the local demo video: `/` (push to talk) and `/stream` (live, with barge-in). Both get a large mic button with a ring that pulses with the mic level, a status label for each stage (Listening, Hearing you, Thinking, Speaking, Interrupted), chat bubbles with the detected language as a tag (useful for showing Hinglish), the checkout URL shown as an "Open checkout" link, "Try saying…" examples, a Live / Push to talk switch, and a light/dark theme button. The passcode field and tips moved into a collapsed "Tips & settings" section.
+
+**Key decisions:**
+- **Still no frontend framework** (CLAUDE.md): plain HTML, CSS and JS. The two pages share `agent/static/style.css` and `agent/static/theme.js`. That needed one server change: `app.mount("/static", ...)` in `agent/main.py`.
+- **The streaming, barge-in and passcode logic is unchanged.** The new code only changes what's displayed (`setStatus`, the level ring, the bubbles), and the barge-in logic never reads any of it. The decision to cut in still depends only on `isPlayingReply`.
+- **Model output is added to the page as DOM text nodes, never `innerHTML`.** The linkifier builds `<a>` elements itself, so a reply can't inject markup.
+- **Theme:** follows the OS until the button is clicked, then the choice is remembered in `localStorage` (wrapped in try/catch, since storage can be blocked). `theme.js` loads in `<head>` so the right colors apply before the first paint.
+
+**Tests:** both pages are checked for every element id their scripts look up (a redesign that drops one breaks the page with no server-side error), and `/static/style.css` and `/static/theme.js` are checked as served. 97 unit tests pass.
+
+**Investigated along the way (no code change):** barge-in works locally but the owner saw it fail on Render. A timing script measured the time from speech onset to the server's `speech_started` message: 326–332 ms on the local server and 329–335 ms in the Render image under `--cpus 0.1 --memory 512m` with a passcode. So the server, the CPU limit and the passcode are ruled out, and the cause is on the browser side of the Render page. A plausible but unconfirmed cause: when autoplay is blocked, the user plays the reply from the audio control, and `isPlayingReply` never becomes true. The owner chose to demo locally and leave Render as it is.
+
+**Review:** be able to explain why display state is kept separate from barge-in state, and why the timing measurement rules the server out.
